@@ -52,7 +52,7 @@ Operator submits booking
 ## Quick Start (Docker — recommended)
 
 ```bash
-git clone https://github.com/your-org/drukpass.git
+git clone https://github.com/UVishnuSaran/drukpass.git
 cd drukpass
 
 cp .env.example .env
