@@ -1,352 +1,376 @@
-"use client";
-import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+'use client'
 
-const statusColor: Record<string, string> = {
-  government_review: "bg-amber-100 text-amber-800 border-amber-200",
-  approved: "bg-green-100 text-green-800 border-green-200",
-  rejected: "bg-red-100 text-red-800 border-red-200",
-  pending: "bg-slate-100 text-slate-700 border-slate-200",
-};
+import { useState } from 'react'
+import Link from 'next/link'
+import { MOCK_GOV_DASHBOARD, GovDashboard, Permit, AgentEvent } from '@/lib/api'
 
-const permitLabel: Record<string, string> = {
-  tourist_visa: "Tourist Visa",
-  regional_tourist: "Regional Tourist",
-  restricted_area_permit: "Restricted Area",
-  trekking_permit: "Trekking Permit",
-};
-
-const countryFlag: Record<string, string> = {
-  JP: "🇯🇵", US: "🇺🇸", GB: "🇬🇧", DE: "🇩🇪", FR: "🇫🇷", AU: "🇦🇺",
-  IN: "🇮🇳", CN: "🇨🇳", KR: "🇰🇷", SG: "🇸🇬", CA: "🇨🇦", NZ: "🇳🇿",
-  BD: "🇧🇩", MV: "🇲🇻", NL: "🇳🇱", IT: "🇮🇹", ES: "🇪🇸", CH: "🇨🇭",
-};
-
-type DashboardData = {
-  stats: {
-    pending_permits: number;
-    approved_today: number;
-    sdf_revenue_today_usd: number;
-    active_travelers: number;
-  };
-  pending_permits: Array<{
-    permit_id: string;
-    permit_number: string;
-    permit_type: string;
-    booking_reference: string;
-    operator_name: string;
-    entry_date: string;
-    districts: string[];
-    hours_pending: number;
-    is_urgent: boolean;
-    metadata: { traveler_name?: string; nationality?: string };
-  }>;
-  recent_events: Array<{
-    actor: string;
-    event_type: string;
-    event_data: Record<string, unknown>;
-    timestamp: string;
-  }>;
-};
-
-// Mock data for demo when API not connected
-const MOCK_DATA: DashboardData = {
-  stats: { pending_permits: 7, approved_today: 12, sdf_revenue_today_usd: 8450, active_travelers: 34 },
-  pending_permits: [
-    { permit_id: "1", permit_number: "BTG-2026-TV-A1B2C3D4", permit_type: "tourist_visa", booking_reference: "DP-2026-001", operator_name: "Himava Tours", entry_date: "2026-06-01", districts: ["Paro", "Thimphu"], hours_pending: 0.3, is_urgent: false, metadata: { traveler_name: "Yuki Tanaka", nationality: "JP" } },
-    { permit_id: "2", permit_number: "BTG-2026-RA-E5F6G7H8", permit_type: "restricted_area_permit", booking_reference: "DP-2026-002", operator_name: "Dragon Fly Travel", entry_date: "2026-06-03", districts: ["Haa"], hours_pending: 2.7, is_urgent: true, metadata: { traveler_name: "James Wilson", nationality: "US" } },
-    { permit_id: "3", permit_number: "BTG-2026-TV-I9J0K1L2", permit_type: "tourist_visa", booking_reference: "DP-2026-003", operator_name: "Bhutan Travel Co", entry_date: "2026-06-05", districts: ["Punakha", "Bumthang"], hours_pending: 1.1, is_urgent: false, metadata: { traveler_name: "Sophie Martin", nationality: "FR" } },
-    { permit_id: "4", permit_number: "BTG-2026-TR-M3N4O5P6", permit_type: "trekking_permit", booking_reference: "DP-2026-004", operator_name: "Himava Tours", entry_date: "2026-06-07", districts: ["Gasa"], hours_pending: 0.8, is_urgent: false, metadata: { traveler_name: "Lars Andersen", nationality: "DE" } },
-  ],
-  recent_events: [
-    { actor: "agent:permit_generator", event_type: "permits_generated", event_data: { permits_created: 2 }, timestamp: new Date(Date.now() - 120000).toISOString() },
-    { actor: "agent:sdf_calculator", event_type: "sdf_calculated", event_data: { total_usd: 1750 }, timestamp: new Date(Date.now() - 300000).toISOString() },
-    { actor: "user:pema@btc.gov.bt", event_type: "permit_approved", event_data: { permit_number: "BTG-2026-TV-PREV01" }, timestamp: new Date(Date.now() - 600000).toISOString() },
-    { actor: "agent:disruption_manager", event_type: "disruption_processed", event_data: { affected_bookings_count: 3 }, timestamp: new Date(Date.now() - 900000).toISOString() },
-    { actor: "agent:eligibility", event_type: "eligibility_check_completed", event_data: { regime: "international", permit_type: "tourist_visa" }, timestamp: new Date(Date.now() - 1200000).toISOString() },
-  ],
-};
-
-function eventIcon(actor: string): string {
-  if (actor.includes("eligibility")) return "🔍";
-  if (actor.includes("sdf")) return "💰";
-  if (actor.includes("permit")) return "📄";
-  if (actor.includes("disruption")) return "⚡";
-  if (actor.includes("user")) return "👤";
-  return "🔄";
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-function eventLabel(type: string): string {
-  return type.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+function formatTime(ts: string) {
+  const d = new Date(ts)
+  const now = new Date()
+  const diffMins = Math.floor((now.getTime() - d.getTime()) / 60000)
+  if (diffMins < 60) return `${diffMins}m ago`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  return formatDate(ts)
 }
 
-function timeAgo(ts: string): string {
-  const diff = (Date.now() - new Date(ts).getTime()) / 1000;
-  if (diff < 60) return `${Math.round(diff)}s ago`;
-  if (diff < 3600) return `${Math.round(diff / 60)}m ago`;
-  return `${Math.round(diff / 3600)}h ago`;
+function getWaitHours(ts: string) {
+  return (new Date().getTime() - new Date(ts).getTime()) / (1000 * 60 * 60)
+}
+
+function activityIcon(e: AgentEvent) {
+  if (e.status === 'error') return '⚡'
+  if (e.event_type === 'APPROVE') return '✅'
+  if (e.event_type === 'REJECT') return '❌'
+  if (e.event_type === 'GENERATE') return '📄'
+  if (e.event_type === 'COMPUTE') return '💰'
+  return '🔍'
+}
+
+function PermitQueueCard({
+  permit,
+  onApprove,
+  onReject,
+}: {
+  permit: Permit
+  onApprove: (id: string) => void
+  onReject: (id: string, reason: string) => void
+}) {
+  const [showReject, setShowReject] = useState(false)
+  const [reason, setReason]         = useState('')
+  const [decision, setDecision]     = useState<'approved' | 'rejected' | null>(null)
+
+  const waitHours  = getWaitHours(permit.created_at)
+  const isLongWait = waitHours > 2
+
+  if (decision === 'approved') {
+    return (
+      <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-xl">✅</div>
+          <div>
+            <div className="font-semibold text-green-800">Permit Approved</div>
+            <div className="text-sm text-green-600 font-mono">{permit.permit_number}</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (decision === 'rejected') {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-xl">❌</div>
+          <div>
+            <div className="font-semibold text-red-800">Permit Rejected</div>
+            <div className="text-sm text-red-600 font-mono">{permit.permit_number}</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`bg-white rounded-xl border permit-card transition-all duration-200 overflow-hidden ${
+      isLongWait ? 'border-amber-300 ring-2 ring-amber-100' : 'border-[#E5DDD0]'
+    }`}>
+      {isLongWait && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-2">
+          <span className="text-amber-500 text-sm">⚠</span>
+          <span className="text-xs font-semibold text-amber-700">
+            Pending {Math.floor(waitHours)}h — exceeds 2-hour threshold
+          </span>
+        </div>
+      )}
+      <div className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-wider">{permit.type}</span>
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 border border-amber-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Pending
+              </span>
+            </div>
+            <div className="font-mono text-base font-bold text-[#374151] tracking-wide">{permit.permit_number}</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-3 text-sm">
+          <div>
+            <div className="text-[10px] text-[#9CA3AF] uppercase tracking-wider font-semibold">Traveler</div>
+            <div className="font-semibold text-[#374151] truncate">{permit.traveler_name}</div>
+            <div className="text-xs text-[#6B7280]">{permit.nationality}</div>
+          </div>
+          <div>
+            <div className="text-[10px] text-[#9CA3AF] uppercase tracking-wider font-semibold">Operator</div>
+            <div className="font-semibold text-[#374151] text-xs truncate">{permit.operator_name}</div>
+          </div>
+        </div>
+
+        <div className="flex gap-4 mb-3 text-sm">
+          <div>
+            <div className="text-[10px] text-[#9CA3AF] uppercase tracking-wider font-semibold">Entry</div>
+            <div className="font-medium text-[#374151]">{formatDate(permit.entry_date)}</div>
+          </div>
+          <div className="text-[#D1D5DB] self-end mb-0.5">to</div>
+          <div>
+            <div className="text-[10px] text-[#9CA3AF] uppercase tracking-wider font-semibold">Exit</div>
+            <div className="font-medium text-[#374151]">{formatDate(permit.exit_date)}</div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1 mb-3">
+          {permit.districts.map(d => (
+            <span key={d} className="text-[10px] bg-[#FFF8E7] text-[#E8762E] border border-[#F5D5B0] rounded-full px-2 py-0.5 font-semibold">{d}</span>
+          ))}
+        </div>
+
+        <div className="bg-[#F9F6F0] rounded-lg p-2.5 mb-3">
+          <div className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-1.5">Documents Submitted</div>
+          {['Passport copy', 'Travel insurance', 'SDF payment', 'Operator confirmation'].map((doc, i) => (
+            <div key={i} className="flex items-center gap-1.5 text-xs text-[#6B7280] py-0.5">
+              <span className="text-green-500 text-[10px]">✓</span>
+              {doc}
+            </div>
+          ))}
+        </div>
+
+        {!showReject ? (
+          <div className="flex gap-2">
+            <button
+              onClick={() => { onApprove(permit.id); setDecision('approved') }}
+              className="flex-1 bg-[#2E7D32] text-white text-sm font-bold py-2.5 rounded-lg hover:bg-[#1B5E20] transition-colors"
+            >
+              Approve
+            </button>
+            <button
+              onClick={() => setShowReject(true)}
+              className="flex-1 bg-white text-[#C0392B] text-sm font-bold py-2.5 rounded-lg border border-[#C0392B] hover:bg-red-50 transition-colors"
+            >
+              Reject
+            </button>
+            <button className="px-3 py-2.5 text-xs font-semibold text-[#9CA3AF] hover:text-[#374151] border border-[#E5DDD0] rounded-lg hover:bg-[#F9F6F0] transition-colors">
+              Defer
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="State the reason for rejection..."
+              rows={2}
+              className="w-full text-sm border border-red-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#C0392B] text-[#374151] placeholder-[#9CA3AF] resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => { if (reason.trim()) { onReject(permit.id, reason.trim()); setDecision('rejected') } }}
+                disabled={!reason.trim()}
+                className="flex-1 bg-[#C0392B] text-white text-sm font-bold py-2 rounded-lg hover:bg-[#A93226] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Confirm Reject
+              </button>
+              <button
+                onClick={() => { setShowReject(false); setReason('') }}
+                className="flex-1 text-sm text-[#6B7280] py-2 rounded-lg border border-[#E5DDD0] hover:bg-[#F9F6F0] transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export default function GovernmentDashboard() {
-  const [data, setData] = useState<DashboardData>(MOCK_DATA);
-  const [loading, setLoading] = useState(false);
-  const [approving, setApproving] = useState<string | null>(null);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
+  const [data, setData] = useState<GovDashboard>(MOCK_GOV_DASHBOARD)
 
-  const showToast = (msg: string, type: "success" | "error" = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  };
+  function handleApprove(id: string) {
+    setData(prev => ({
+      ...prev,
+      stats: { ...prev.stats, permits_pending: Math.max(0, prev.stats.permits_pending - 1), approved_today: prev.stats.approved_today + 1 },
+    }))
+  }
 
-  const loadDashboard = useCallback(async () => {
-    try {
-      const result = await api.govDashboard() as DashboardData;
-      setData(result);
-      setLastRefresh(new Date());
-    } catch {
-      // Use mock data if API not available
-      setData(MOCK_DATA);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadDashboard();
-    const interval = setInterval(loadDashboard, 30000);
-    return () => clearInterval(interval);
-  }, [loadDashboard]);
-
-  const handleApprove = async (permitId: string, permitNumber: string) => {
-    setApproving(permitId);
-    try {
-      await api.approvePermit(permitId);
-      showToast(`✅ Permit ${permitNumber} approved`);
-      await loadDashboard();
-    } catch {
-      // Demo: update local state
-      setData(prev => ({
-        ...prev,
-        stats: { ...prev.stats, pending_permits: prev.stats.pending_permits - 1, approved_today: prev.stats.approved_today + 1 },
-        pending_permits: prev.pending_permits.filter(p => p.permit_id !== permitId),
-        recent_events: [{ actor: "user:pema@btc.gov.bt", event_type: "permit_approved", event_data: { permit_number: permitNumber }, timestamp: new Date().toISOString() }, ...prev.recent_events.slice(0, 9)],
-      }));
-      showToast(`✅ Permit ${permitNumber} approved`);
-    } finally {
-      setApproving(null);
-    }
-  };
-
-  const handleReject = async (permitId: string, permitNumber: string) => {
-    if (!rejectReason.trim()) { showToast("Enter a rejection reason", "error"); return; }
-    try {
-      await api.rejectPermit(permitId, rejectReason);
-      showToast(`Permit ${permitNumber} rejected`, "error");
-      setRejectingId(null);
-      setRejectReason("");
-      await loadDashboard();
-    } catch {
-      setData(prev => ({
-        ...prev,
-        stats: { ...prev.stats, pending_permits: prev.stats.pending_permits - 1 },
-        pending_permits: prev.pending_permits.filter(p => p.permit_id !== permitId),
-      }));
-      showToast(`Permit ${permitNumber} rejected`);
-      setRejectingId(null);
-      setRejectReason("");
-    }
-  };
+  function handleReject(id: string) {
+    setData(prev => ({
+      ...prev,
+      stats: { ...prev.stats, permits_pending: Math.max(0, prev.stats.permits_pending - 1) },
+    }))
+  }
 
   return (
-    <div className="min-h-screen bg-amber-50">
-      {/* Toast */}
-      {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-lg shadow-lg text-sm font-medium transition-all ${toast.type === "success" ? "bg-green-700 text-white" : "bg-red-700 text-white"}`}>
-          {toast.msg}
-        </div>
-      )}
-
+    <div className="min-h-screen bg-[#F9F6F0]">
       {/* Header */}
-      <header className="bg-red-800 text-white px-6 py-4 flex items-center justify-between shadow-lg">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">🇧🇹</span>
-          <div>
-            <h1 className="font-bold text-lg leading-tight">Tourism Council of Bhutan</h1>
-            <p className="text-red-200 text-xs">Operations Dashboard — DrukPass</p>
+      <header className="bg-[#374151] text-white">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/" className="w-10 h-10 rounded-lg bg-[#E8762E] flex items-center justify-center text-xl shadow hover:opacity-90 transition-opacity">
+                🇧🇹
+              </Link>
+              <div>
+                <div className="text-xs font-bold text-[#9CA3AF] uppercase tracking-widest">Tourism Council of Bhutan</div>
+                <div className="font-bold text-white text-lg leading-tight">Operations Dashboard</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right hidden sm:block">
+                <div className="text-sm font-semibold text-white">Pema Wangdi</div>
+                <div className="text-xs text-[#9CA3AF]">Senior Permit Officer</div>
+              </div>
+              <div className="w-9 h-9 rounded-full bg-[#E8762E] flex items-center justify-center font-bold text-white text-sm">PW</div>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-xs text-red-200">Last updated: {lastRefresh.toLocaleTimeString()}</span>
-          <button onClick={loadDashboard} className="bg-red-700 hover:bg-red-600 px-3 py-1.5 rounded text-xs font-medium transition-colors">
-            ↻ Refresh
-          </button>
-          <div className="w-8 h-8 bg-red-700 rounded-full flex items-center justify-center text-sm font-bold">P</div>
         </div>
       </header>
 
-      {/* Stats Bar */}
-      <div className="grid grid-cols-4 gap-0 border-b border-amber-200 bg-white shadow-sm">
-        {[
-          { label: "Pending Review", value: data.stats.pending_permits, color: "text-amber-600", icon: "⏳" },
-          { label: "Approved Today", value: data.stats.approved_today, color: "text-green-700", icon: "✅" },
-          { label: "SDF Revenue Today", value: `$${data.stats.sdf_revenue_today_usd.toLocaleString()}`, color: "text-blue-700", icon: "💰" },
-          { label: "Active Travelers", value: data.stats.active_travelers, color: "text-purple-700", icon: "🧳" },
-        ].map((stat) => (
-          <div key={stat.label} className="p-5 border-r border-amber-100 last:border-r-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span>{stat.icon}</span>
-              <span className="text-xs text-slate-500 font-medium">{stat.label}</span>
-            </div>
-            <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Main Content */}
-      <div className="flex gap-0 h-[calc(100vh-140px)]">
-        {/* Left: Approval Queue */}
-        <div className="w-2/3 border-r border-amber-200 overflow-y-auto bg-white">
-          <div className="px-5 py-3 border-b border-amber-100 flex items-center justify-between sticky top-0 bg-white z-10">
-            <h2 className="font-semibold text-slate-800 flex items-center gap-2">
-              <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
-              Permit Approval Queue
-              <span className="ml-1 bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-bold">{data.pending_permits.length}</span>
-            </h2>
-            <span className="text-xs text-slate-400">Sorted by submission time</span>
-          </div>
-
-          {data.pending_permits.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-              <div className="text-4xl mb-3">✅</div>
-              <p className="font-medium">All permits reviewed</p>
-              <p className="text-sm">No pending applications</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-amber-50">
-              {data.pending_permits.map((permit) => (
-                <div key={permit.permit_id} className={`p-5 hover:bg-amber-50 transition-colors ${permit.is_urgent ? "border-l-4 border-l-red-500" : ""}`}>
-                  {permit.is_urgent && (
-                    <div className="text-xs text-red-600 font-semibold mb-2 flex items-center gap-1">
-                      🔴 Pending {permit.hours_pending}h — requires attention
-                    </div>
-                  )}
-
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-lg">{countryFlag[permit.metadata?.nationality || ""] || "🌍"}</span>
-                        <span className="font-semibold text-slate-800">{permit.metadata?.traveler_name || "Unknown Traveler"}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${statusColor[permit.permit_type] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
-                          {permitLabel[permit.permit_type] || permit.permit_type}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-3 text-xs text-slate-600 mb-3">
-                        <div><span className="text-slate-400">Operator</span><br /><span className="font-medium">{permit.operator_name}</span></div>
-                        <div><span className="text-slate-400">Entry Date</span><br /><span className="font-medium">{new Date(permit.entry_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span></div>
-                        <div><span className="text-slate-400">Districts</span><br /><span className="font-medium">{permit.districts?.join(", ") || "N/A"}</span></div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <span className="font-mono bg-slate-50 px-2 py-0.5 rounded border">{permit.permit_number}</span>
-                        <span>•</span>
-                        <span>Ref: {permit.booking_reference}</span>
-                        <span>•</span>
-                        <span>{permit.hours_pending < 1 ? `${Math.round(permit.hours_pending * 60)}m` : `${permit.hours_pending}h`} ago</span>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex flex-col gap-2 min-w-[120px]">
-                      {rejectingId === permit.permit_id ? (
-                        <div className="flex flex-col gap-2">
-                          <textarea
-                            className="text-xs border border-red-200 rounded p-2 w-full resize-none focus:outline-none focus:ring-1 focus:ring-red-400"
-                            placeholder="Rejection reason..."
-                            rows={2}
-                            value={rejectReason}
-                            onChange={e => setRejectReason(e.target.value)}
-                          />
-                          <button onClick={() => handleReject(permit.permit_id, permit.permit_number)} className="bg-red-600 text-white text-xs px-3 py-1.5 rounded font-medium hover:bg-red-700 transition-colors">
-                            Confirm Reject
-                          </button>
-                          <button onClick={() => { setRejectingId(null); setRejectReason(""); }} className="text-slate-500 text-xs hover:text-slate-700">
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => handleApprove(permit.permit_id, permit.permit_number)}
-                            disabled={approving === permit.permit_id}
-                            className="bg-green-700 text-white text-sm px-4 py-2 rounded-lg font-semibold hover:bg-green-800 transition-colors disabled:opacity-60 flex items-center justify-center gap-1"
-                          >
-                            {approving === permit.permit_id ? <span className="animate-spin">⟳</span> : "✓"} Approve
-                          </button>
-                          <button onClick={() => setRejectingId(permit.permit_id)} className="border border-red-300 text-red-600 text-xs px-4 py-1.5 rounded-lg font-medium hover:bg-red-50 transition-colors">
-                            Reject
-                          </button>
-                          <button className="text-slate-400 text-xs hover:text-slate-600 text-center">Defer →</button>
-                        </>
-                      )}
-                    </div>
-                  </div>
+      {/* Disruption banner */}
+      {data.disruption_alerts.length > 0 && (
+        <div className="bg-[#C0392B]">
+          <div className="max-w-7xl mx-auto px-6 py-2.5 space-y-1">
+            {data.disruption_alerts.map(alert => (
+              <div key={alert.id} className="flex items-start gap-3 text-sm text-white">
+                <span className="font-bold text-red-200 text-xs whitespace-nowrap mt-0.5 uppercase tracking-wide">
+                  {alert.severity === 'HIGH' ? 'HIGH' : alert.severity === 'MEDIUM' ? 'MED' : 'LOW'}
+                </span>
+                <div>
+                  <span className="font-bold">{alert.title}</span>
+                  <span className="text-red-200 mx-1.5">—</span>
+                  <span className="text-red-100 text-xs">{alert.description}</span>
                 </div>
-              ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {/* Stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {[
+            { label: 'Permits Pending Review', value: data.stats.permits_pending,  icon: '⏳', color: 'text-amber-600',   bg: 'bg-amber-50',      sub: 'awaiting decision' },
+            { label: 'Approved Today',          value: data.stats.approved_today,   icon: '✅', color: 'text-[#2E7D32]',   bg: 'bg-green-50',      sub: 'permits issued' },
+            { label: 'SDF Revenue Today',       value: `$${data.stats.sdf_revenue_today.toLocaleString()}`, icon: '💰', color: 'text-[#E8762E]', bg: 'bg-orange-50', sub: 'USD collected' },
+            { label: 'Active Travelers',         value: data.stats.active_travelers, icon: '🧳', color: 'text-[#374151]',  bg: 'bg-[#F9F6F0]',    sub: 'currently in Bhutan' },
+          ].map(s => (
+            <div key={s.label} className={`${s.bg} rounded-xl border border-[#E5DDD0] p-5 shadow-sm`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-2xl">{s.icon}</span>
+                <span className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-wider leading-tight">{s.label}</span>
+              </div>
+              <div className={`text-3xl font-extrabold ${s.color}`}>{s.value}</div>
+              <div className="text-xs text-[#9CA3AF] mt-0.5">{s.sub}</div>
             </div>
-          )}
+          ))}
         </div>
 
-        {/* Right: Activity Feed */}
-        <div className="w-1/3 bg-slate-50 overflow-y-auto">
-          <div className="px-4 py-3 border-b border-amber-200 sticky top-0 bg-slate-50 z-10">
-            <h2 className="font-semibold text-slate-700 text-sm flex items-center gap-2">
-              ⚡ Live Activity
-            </h2>
-          </div>
+        {/* Two-column layout */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
-          {/* District Overview */}
-          <div className="p-4 border-b border-amber-100">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Active by District</h3>
-            <div className="space-y-2">
-              {[
-                { district: "Paro", count: 12, color: "bg-orange-500" },
-                { district: "Thimphu", count: 8, color: "bg-red-600" },
-                { district: "Punakha", count: 6, color: "bg-green-600" },
-                { district: "Bumthang", count: 4, color: "bg-blue-600" },
-                { district: "Haa", count: 2, color: "bg-purple-600" },
-                { district: "Gasa", count: 2, color: "bg-teal-600" },
-              ].map(({ district, count, color }) => (
-                <div key={district} className="flex items-center gap-2 text-xs">
-                  <span className="text-slate-600 w-20">{district}</span>
-                  <div className="flex-1 bg-slate-200 rounded-full h-1.5">
-                    <div className={`${color} h-1.5 rounded-full`} style={{ width: `${(count / 12) * 100}%` }} />
-                  </div>
-                  <span className="text-slate-500 font-medium w-6 text-right">{count}</span>
-                </div>
+          {/* LEFT — Queue */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-[#374151]">Permit Approval Queue</h2>
+              <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1 font-semibold">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                {data.pending_permits.length} pending
+              </div>
+            </div>
+            <div className="space-y-4">
+              {data.pending_permits.map(permit => (
+                <PermitQueueCard
+                  key={permit.id}
+                  permit={permit}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                />
               ))}
             </div>
           </div>
 
-          {/* Event Feed */}
-          <div className="p-4">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">System Events</h3>
-            <div className="space-y-3">
-              {data.recent_events.map((event, i) => (
-                <div key={i} className="flex gap-2 text-xs">
-                  <span className="text-base mt-0.5 flex-shrink-0">{eventIcon(event.actor)}</span>
-                  <div>
-                    <p className="text-slate-700 font-medium leading-snug">{eventLabel(event.event_type)}</p>
-                    <p className="text-slate-400">{event.actor.replace("agent:", "").replace("user:", "")}</p>
-                    <p className="text-slate-400 mt-0.5">{timeAgo(event.timestamp)}</p>
-                  </div>
+          {/* RIGHT — Live ops */}
+          <div className="space-y-5">
+            {/* District breakdown */}
+            <div className="bg-white rounded-xl border border-[#E5DDD0] shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#F0EBE3] flex items-center justify-between">
+                <h3 className="text-sm font-bold text-[#374151]">District Breakdown</h3>
+                <span className="text-xs text-[#9CA3AF]">Live</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-[#FAFAF8] border-b border-[#F0EBE3]">
+                      <th className="text-left px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">District</th>
+                      <th className="text-right px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">Travelers</th>
+                      <th className="text-right px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-[#9CA3AF]">Active Permits</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.district_stats.map((row, idx) => (
+                      <tr key={row.district} className={`border-b border-[#F9F6F0] hover:bg-[#FFF8E7] transition-colors ${idx % 2 === 0 ? '' : 'bg-[#FAFAF8]'}`}>
+                        <td className="px-4 py-2.5 font-medium text-[#374151]">{row.district}</td>
+                        <td className="px-4 py-2.5 text-right text-[#6B7280]">{row.travelers}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="w-14 bg-[#F0EBE3] rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className="h-full bg-[#E8762E] rounded-full"
+                                style={{ width: `${Math.min(100, (row.active_permits / data.stats.active_travelers) * 350)}%` }}
+                              />
+                            </div>
+                            <span className="text-[#374151] font-semibold w-6 text-right">{row.active_permits}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Activity feed */}
+            <div className="bg-white rounded-xl border border-[#E5DDD0] shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#F0EBE3] flex items-center justify-between">
+                <h3 className="text-sm font-bold text-[#374151]">Recent Activity</h3>
+                <div className="flex items-center gap-1.5 text-xs text-green-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  Live
                 </div>
-              ))}
+              </div>
+              <div className="divide-y divide-[#F9F6F0] max-h-80 overflow-y-auto">
+                {data.recent_activity.map(event => (
+                  <div key={event.id} className="px-4 py-3 flex items-start gap-3 hover:bg-[#FAFAF8] transition-colors">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm mt-0.5 ${
+                      event.status === 'error'         ? 'bg-red-50' :
+                      event.event_type === 'APPROVE'   ? 'bg-green-50' :
+                                                         'bg-[#FFF8E7]'
+                    }`}>
+                      {activityIcon(event)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-[#374151] leading-snug">{event.description}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-[#9CA3AF]">{event.agent}</span>
+                        <span className="text-[10px] text-[#D1D5DB]">·</span>
+                        <span className="text-[10px] text-[#9CA3AF]">{formatTime(event.timestamp)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
-  );
+  )
 }

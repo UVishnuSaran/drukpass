@@ -1,235 +1,287 @@
-"use client";
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+'use client'
 
-const MOCK_ASSIGNMENTS = [
-  { id: "1", booking_reference: "DP-2026-001", traveler_name: "Yuki Tanaka", nationality: "JP", entry_date: "2026-06-01", exit_date: "2026-06-08", districts: ["Paro", "Thimphu"], status: "assigned", operator_name: "Himava Tours" },
-  { id: "2", booking_reference: "DP-2026-005", traveler_name: "Lars Andersen", nationality: "DE", entry_date: "2026-06-12", exit_date: "2026-06-22", districts: ["Gasa", "Paro"], status: "confirmed", operator_name: "Himava Tours" },
-];
+import { useState } from 'react'
+import Link from 'next/link'
+import { MOCK_GUIDE_PROFILE, GuideProfile } from '@/lib/api'
 
-const MOCK_PERMITS = [
-  { permit_number: "BTG-2026-TV-A1B2C3D4", permit_type: "Tourist Visa", valid_from: "2026-06-01", valid_until: "2026-06-08", status: "approved", traveler_name: "Yuki Tanaka", booking_reference: "DP-2026-001" },
-  { permit_number: "BTG-2026-TR-E5F6G7H8", permit_type: "Trekking Permit", valid_from: "2026-06-12", valid_until: "2026-06-22", status: "government_review", traveler_name: "Lars Andersen", booking_reference: "DP-2026-005" },
-  { permit_number: "BTG-2026-RA-I9J0K1L2", permit_type: "Restricted Area", valid_from: "2026-06-12", valid_until: "2026-06-22", status: "government_review", traveler_name: "Lars Andersen", booking_reference: "DP-2026-005" },
-];
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-const FLAG: Record<string, string> = { JP: "🇯🇵", US: "🇺🇸", DE: "🇩🇪", FR: "🇫🇷", IN: "🇮🇳", GB: "🇬🇧", AU: "🇦🇺", SG: "🇸🇬" };
-
-function QRCodeDisplay({ permitNumber }: { permitNumber: string }) {
-  const qrData = `https://drukpass.bt/verify/${permitNumber}`;
-  return (
-    <div className="flex flex-col items-center py-4">
-      <div className="w-36 h-36 bg-white border-2 border-slate-200 rounded-xl flex items-center justify-center relative overflow-hidden">
-        {/* Simplified QR visual */}
-        <div className="grid grid-cols-7 gap-px w-28 h-28">
-          {Array.from({ length: 49 }).map((_, i) => {
-            // Corner markers
-            const row = Math.floor(i / 7);
-            const col = i % 7;
-            const isCornerTL = row < 3 && col < 3;
-            const isCornerTR = row < 3 && col > 3;
-            const isCornerBL = row > 3 && col < 3;
-            const isBorder = (row === 0 || row === 6 || col === 0 || col === 6) && (isCornerTL || isCornerTR || isCornerBL);
-            const isData = (Math.random() > 0.5 || isBorder) && !(isCornerTL && row === 1 && col === 1);
-            return <div key={i} className={`${isData ? "bg-slate-800" : "bg-white"} rounded-sm`} />;
-          })}
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-8 h-8 bg-orange-600 rounded-sm flex items-center justify-center">
-            <span className="text-white text-xs font-bold">🇧🇹</span>
-          </div>
-        </div>
-      </div>
-      <p className="text-xs text-slate-400 mt-2 font-mono text-center break-all px-2">{permitNumber}</p>
-      <p className="text-xs text-slate-400 mt-1">{qrData}</p>
-    </div>
-  );
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-export default function GuideDashboard() {
-  const [assignments, setAssignments] = useState(MOCK_ASSIGNMENTS);
-  const [permits, setPermits] = useState(MOCK_PERMITS);
-  const [activeTab, setActiveTab] = useState<"assignments" | "permits">("assignments");
-  const [expandedPermit, setExpandedPermit] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+function daysUntil(dateStr: string) {
+  const now  = new Date()
+  const date = new Date(dateStr)
+  return Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+}
 
-  useEffect(() => {
-    Promise.all([
-      api.guideAssignments().catch(() => null),
-      api.guidePermits().catch(() => null),
-    ]).then(([a, p]) => {
-      if (Array.isArray(a) && a.length > 0) setAssignments(a as typeof MOCK_ASSIGNMENTS);
-      if (Array.isArray(p) && p.length > 0) setPermits(p as typeof MOCK_PERMITS);
-    });
-  }, []);
+// Deterministic QR pattern from a data string
+function QRCodeMini({ data, size = 100 }: { data: string; size?: number }) {
+  const hash = data.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+  const cells = 17
+  const cellSize = size / cells
 
-  const handleConfirm = async (id: string) => {
-    try {
-      await api.confirmAssignment(id);
-    } catch {}
-    setAssignments(prev => prev.map(a => a.id === id ? { ...a, status: "confirmed" } : a));
-    setToast("Assignment confirmed!");
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const statusBadge = (status: string) => {
-    const map: Record<string, string> = {
-      approved: "bg-green-100 text-green-700 border-green-200",
-      government_review: "bg-amber-100 text-amber-700 border-amber-200",
-      pending: "bg-slate-100 text-slate-500 border-slate-200",
-      confirmed: "bg-blue-100 text-blue-700 border-blue-200",
-      assigned: "bg-orange-100 text-orange-700 border-orange-200",
-    };
-    const labels: Record<string, string> = { approved: "✅ Approved", government_review: "⏳ Pending Review", pending: "Draft", confirmed: "Confirmed", assigned: "New Assignment" };
-    return <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${map[status] || "bg-slate-100 text-slate-500 border-slate-200"}`}>{labels[status] || status}</span>;
-  };
+  const grid: boolean[][] = Array.from({ length: cells }, (_, r) =>
+    Array.from({ length: cells }, (_, c) => {
+      const inTL = r < 7 && c < 7
+      const inTR = r < 7 && c >= cells - 7
+      const inBL = r >= cells - 7 && c < 7
+      if (inTL || inTR || inBL) {
+        const lr = inTL ? r : inTR ? r : r - (cells - 7)
+        const lc = inTL ? c : inTR ? c - (cells - 7) : c
+        return (lr === 0 || lr === 6 || lc === 0 || lc === 6) || (lr >= 2 && lr <= 4 && lc >= 2 && lc <= 4)
+      }
+      return (hash * (r + 1) * (c + 1) * 31) % 7 < 3
+    })
+  )
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col items-center">
-      {toast && <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-green-700 text-white px-5 py-2.5 rounded-full text-sm font-medium shadow-lg">{toast}</div>}
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rounded-sm">
+      <rect width={size} height={size} fill="white" />
+      {grid.map((row, r) =>
+        row.map((cell, c) =>
+          cell ? (
+            <rect key={`${r}-${c}`} x={c * cellSize} y={r * cellSize} width={cellSize} height={cellSize} fill="#1F2937" />
+          ) : null
+        )
+      )}
+    </svg>
+  )
+}
 
-      {/* Phone frame */}
-      <div className="w-full max-w-sm bg-white min-h-screen shadow-2xl relative">
+// ── Main Component ─────────────────────────────────────────────────────────────
+
+export default function GuidePage() {
+  const [profile] = useState<GuideProfile>(MOCK_GUIDE_PROFILE)
+  const [expandedQR, setExpandedQR] = useState<string | null>(null)
+
+  const certDaysLeft = daysUntil(profile.cert_expiry)
+  const certWarning  = certDaysLeft <= 90
+
+  return (
+    <div className="min-h-screen bg-[#F9F6F0] flex flex-col items-center py-0">
+      {/* Mobile-simulated container */}
+      <div className="w-full max-w-sm bg-white min-h-screen shadow-2xl flex flex-col">
+
         {/* Header */}
-        <div className="bg-green-800 text-white px-5 pt-10 pb-5">
-          <div className="flex items-center justify-between mb-1">
+        <div className="bg-gradient-to-b from-[#374151] to-[#2D3748] text-white px-5 pt-8 pb-5">
+          <div className="flex items-start justify-between mb-4">
+            <Link href="/" className="text-[#9CA3AF] hover:text-white text-xs font-medium transition-colors">
+              ← Home
+            </Link>
+            <div className="text-xs text-[#9CA3AF] font-medium uppercase tracking-widest">Guide Wallet</div>
+          </div>
+
+          {/* Guide identity */}
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-[#E8762E] flex items-center justify-center text-2xl shadow-lg font-bold text-white">
+              {profile.name.split(' ').map(n => n[0]).join('')}
+            </div>
             <div>
-              <p className="text-green-300 text-xs">Licensed Guide</p>
-              <h1 className="text-xl font-bold">Tenzin Wangchuk</h1>
+              <div className="font-bold text-white text-lg leading-tight">{profile.name}</div>
+              <div className="text-[#9CA3AF] text-xs mt-0.5">Licensed Tour Guide</div>
+              <div className="font-mono text-xs text-[#E8762E] mt-1 font-semibold">{profile.license_number}</div>
             </div>
-            <div className="w-11 h-11 bg-green-700 rounded-full flex items-center justify-center text-xl">🧭</div>
           </div>
-          <p className="text-green-300 text-xs mt-1">License: TCB-G-2024-0847 • Valid until Dec 2026</p>
-        </div>
 
-        {/* Stats Strip */}
-        <div className="grid grid-cols-3 bg-green-900 text-center">
-          {[
-            { label: "Upcoming", value: assignments.filter(a => new Date(a.entry_date) > new Date()).length },
-            { label: "Active Permits", value: permits.filter(p => p.status === "approved").length },
-            { label: "This Month", value: assignments.length },
-          ].map(s => (
-            <div key={s.label} className="py-3 border-r border-green-800 last:border-r-0">
-              <div className="text-xl font-bold text-white">{s.value}</div>
-              <div className="text-xs text-green-400">{s.label}</div>
+          {/* Cert status */}
+          <div className={`mt-4 rounded-xl p-3 flex items-center gap-3 ${
+            certWarning ? 'bg-red-900/40 border border-red-700/50' : 'bg-white/10 border border-white/20'
+          }`}>
+            <div className="text-xl">{certWarning ? '⚠️' : '✅'}</div>
+            <div>
+              <div className={`text-xs font-bold uppercase tracking-wide ${certWarning ? 'text-red-300' : 'text-green-300'}`}>
+                Certification {certWarning ? 'Expiring Soon' : 'Valid'}
+              </div>
+              <div className={`text-xs mt-0.5 ${certWarning ? 'text-red-200' : 'text-[#9CA3AF]'}`}>
+                Expires {formatDate(profile.cert_expiry)}
+                {certWarning && ` — ${certDaysLeft} days left`}
+              </div>
             </div>
-          ))}
-        </div>
-
-        {/* Cert Warning */}
-        <div className="mx-4 mt-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
-          <span className="text-xl">⚠️</span>
-          <div>
-            <p className="text-xs font-semibold text-amber-800">Certification Reminder</p>
-            <p className="text-xs text-amber-700">First Aid cert expires in 23 days — renew before Jun 16</p>
           </div>
         </div>
 
-        {/* Tab Bar */}
-        <div className="flex mx-4 mt-4 bg-slate-100 rounded-xl p-1">
-          {[["assignments", "My Assignments"], ["permits", "Permit Wallet"]].map(([key, label]) => (
-            <button key={key} onClick={() => setActiveTab(key as "assignments" | "permits")}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === key ? "bg-white text-green-800 shadow-sm" : "text-slate-500"}`}>
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
 
-        {/* Assignments Tab */}
-        {activeTab === "assignments" && (
-          <div className="px-4 py-4 space-y-3 pb-24">
-            {assignments.length === 0 ? (
-              <div className="text-center py-12 text-slate-400">
-                <div className="text-4xl mb-2">🧭</div>
-                <p>No upcoming assignments</p>
+          {/* Upcoming assignments */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-[#374151] uppercase tracking-wider">Upcoming Assignments</h2>
+              <span className="text-xs text-[#9CA3AF] bg-[#F0EBE3] rounded-full px-2 py-0.5 font-semibold">
+                {profile.assignments.length}
+              </span>
+            </div>
+
+            {profile.assignments.length === 0 ? (
+              <div className="bg-[#F9F6F0] rounded-xl p-4 text-center text-sm text-[#9CA3AF]">
+                No upcoming assignments
               </div>
-            ) : assignments.map(a => (
-              <div key={a.id} className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{FLAG[a.nationality] || "🌍"}</span>
-                    <div>
-                      <p className="font-semibold text-slate-800 text-sm">{a.traveler_name}</p>
-                      <p className="text-xs text-slate-400">{a.operator_name}</p>
+            ) : (
+              <div className="space-y-3">
+                {profile.assignments.map(a => (
+                  <div key={a.id} className="bg-white rounded-xl border border-[#E5DDD0] p-4 shadow-sm">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="font-semibold text-[#374151]">{a.traveler_name}</div>
+                        <div className="text-xs text-[#9CA3AF]">{a.operator_name}</div>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">
+                        {a.status}
+                      </span>
                     </div>
-                  </div>
-                  {statusBadge(a.status)}
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                  <div className="bg-slate-50 rounded-lg px-3 py-2">
-                    <p className="text-slate-400">From</p>
-                    <p className="font-semibold text-slate-700">{new Date(a.entry_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg px-3 py-2">
-                    <p className="text-slate-400">To</p>
-                    <p className="font-semibold text-slate-700">{new Date(a.exit_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</p>
-                  </div>
-                </div>
-                <div className="bg-slate-50 rounded-lg px-3 py-2 mb-3">
-                  <p className="text-xs text-slate-400 mb-1">Districts</p>
-                  <div className="flex flex-wrap gap-1">
-                    {a.districts.map(d => (
-                      <span key={d} className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-medium">{d}</span>
-                    ))}
-                  </div>
-                </div>
-                {a.status === "assigned" && (
-                  <button onClick={() => handleConfirm(a.id)}
-                    className="w-full bg-green-700 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-green-800 transition-colors">
-                    ✓ Confirm Assignment
-                  </button>
-                )}
-                {a.status === "confirmed" && (
-                  <div className="text-center text-xs text-green-600 font-semibold py-1">✅ Assignment confirmed</div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
 
-        {/* Permits Tab */}
-        {activeTab === "permits" && (
-          <div className="px-4 py-4 space-y-3 pb-24">
-            {permits.map(p => (
-              <div key={p.permit_number} className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <p className="font-semibold text-slate-800 text-sm">{p.permit_type}</p>
-                      <p className="text-xs text-slate-400">{p.traveler_name}</p>
+                    <div className="flex gap-4 mb-2 text-sm">
+                      <div>
+                        <div className="text-[10px] text-[#9CA3AF] font-semibold uppercase tracking-wider">From</div>
+                        <div className="font-medium text-[#374151] text-xs">{formatDate(a.entry_date)}</div>
+                      </div>
+                      <div className="text-[#D1D5DB] self-end mb-0.5 text-xs">to</div>
+                      <div>
+                        <div className="text-[10px] text-[#9CA3AF] font-semibold uppercase tracking-wider">To</div>
+                        <div className="font-medium text-[#374151] text-xs">{formatDate(a.exit_date)}</div>
+                      </div>
                     </div>
-                    {statusBadge(p.status)}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
-                    <span>📅 {new Date(p.valid_from).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – {new Date(p.valid_until).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
-                  </div>
-                  <p className="font-mono text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg">{p.permit_number}</p>
-                </div>
 
-                {p.status === "approved" && (
-                  <>
-                    <button onClick={() => setExpandedPermit(expandedPermit === p.permit_number ? null : p.permit_number)}
-                      className="w-full bg-green-700 text-white py-3 text-sm font-semibold hover:bg-green-800 transition-colors">
-                      {expandedPermit === p.permit_number ? "Hide QR Code ↑" : "📱 Show at Checkpoint ↓"}
-                    </button>
-                    {expandedPermit === p.permit_number && (
-                      <div className="border-t border-slate-100">
-                        <QRCodeDisplay permitNumber={p.permit_number} />
-                        <p className="text-center text-xs text-slate-400 pb-4">Present this QR code at the district checkpoint</p>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {a.districts.map(d => (
+                        <span key={d} className="text-[10px] bg-[#FFF8E7] text-[#E8762E] border border-[#F5D5B0] rounded-full px-2 py-0.5 font-semibold">
+                          {d}
+                        </span>
+                      ))}
+                    </div>
+
+                    {a.operator_phone && (
+                      <div className="text-xs text-[#9CA3AF]">
+                        <span className="font-medium text-[#374151]">Operator:</span> {a.operator_phone}
                       </div>
                     )}
-                  </>
-                )}
-                {p.status === "government_review" && (
-                  <div className="bg-amber-50 px-4 py-3 text-xs text-amber-700 font-medium flex items-center gap-2">
-                    <span className="animate-pulse">⏳</span> Awaiting government approval — you will be notified
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            )}
+          </section>
+
+          {/* My Permits */}
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold text-[#374151] uppercase tracking-wider">My Permits</h2>
+              <span className="text-xs text-[#9CA3AF] bg-[#F0EBE3] rounded-full px-2 py-0.5 font-semibold">
+                {profile.permits.length}
+              </span>
+            </div>
+
+            {profile.permits.length === 0 ? (
+              <div className="bg-[#F9F6F0] rounded-xl p-4 text-center text-sm text-[#9CA3AF]">
+                No active permits
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {profile.permits.map(permit => {
+                  const isApproved  = permit.status === 'APPROVED'
+                  const isExpanded  = expandedQR === permit.id
+
+                  return (
+                    <div key={permit.id} className={`bg-white rounded-xl border-2 overflow-hidden shadow-sm ${
+                      isApproved ? 'border-[#2E7D32]' : 'border-amber-300'
+                    }`}>
+                      {/* Status stripe */}
+                      <div className={`h-1 ${isApproved ? 'bg-gradient-to-r from-[#2E7D32] to-[#4CAF50]' : 'bg-amber-400'}`} />
+
+                      <div className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <div className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-wider">{permit.type}</div>
+                            <div className="font-mono text-base font-bold text-[#374151] mt-0.5 tracking-wide">{permit.permit_number}</div>
+                          </div>
+                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                            isApproved ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}>
+                            {isApproved ? '✓ Approved' : '⏳ Pending'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-sm mb-3">
+                          <div>
+                            <div className="text-[10px] text-[#9CA3AF] font-semibold uppercase tracking-wider">Traveler</div>
+                            <div className="font-semibold text-[#374151] text-xs">{permit.traveler_name}</div>
+                            <div className="text-[#6B7280] text-[11px]">{permit.nationality}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-[#9CA3AF] font-semibold uppercase tracking-wider">Valid</div>
+                            <div className="font-medium text-[#374151] text-[11px]">{formatDate(permit.entry_date)}</div>
+                            <div className="text-[#6B7280] text-[11px]">to {formatDate(permit.exit_date)}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1 mb-4">
+                          {permit.districts.map(d => (
+                            <span key={d} className="text-[10px] bg-[#FFF8E7] text-[#E8762E] border border-[#F5D5B0] rounded-full px-2 py-0.5 font-semibold">
+                              {d}
+                            </span>
+                          ))}
+                        </div>
+
+                        {/* QR section */}
+                        {isExpanded ? (
+                          <div className="flex flex-col items-center gap-3 py-2">
+                            <div className="p-3 bg-white border-2 border-[#E5DDD0] rounded-xl shadow-inner">
+                              <QRCodeMini data={permit.qr_data} size={160} />
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xs font-bold text-[#374151] mb-0.5">Show to Checkpoint Officer</div>
+                              <div className="font-mono text-[10px] text-[#9CA3AF] break-all max-w-[200px] text-center">
+                                {permit.qr_data}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setExpandedQR(null)}
+                              className="text-xs text-[#9CA3AF] hover:text-[#374151] underline"
+                            >
+                              Close
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setExpandedQR(permit.id)}
+                            className={`w-full text-sm font-bold py-3 rounded-xl transition-colors ${
+                              isApproved
+                                ? 'bg-[#2E7D32] text-white hover:bg-[#1B5E20]'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                            }`}
+                          >
+                            {isApproved ? '📱 Show at Checkpoint' : '⏳ Pending Approval'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* Bottom spacing */}
+          <div className="h-6" />
+        </div>
+
+        {/* Bottom nav */}
+        <div className="border-t border-[#E5DDD0] bg-white px-4 py-3 flex gap-4">
+          {[
+            { icon: '🏠', label: 'Home',        href: '/'          },
+            { icon: '📋', label: 'Assignments',  href: '/guide'     },
+            { icon: '📄', label: 'Permits',      href: '/guide'     },
+            { icon: '👤', label: 'Profile',      href: '/guide'     },
+          ].map(item => (
+            <Link key={item.label} href={item.href}
+              className="flex-1 flex flex-col items-center gap-1 text-[#9CA3AF] hover:text-[#E8762E] transition-colors">
+              <span className="text-xl">{item.icon}</span>
+              <span className="text-[10px] font-semibold">{item.label}</span>
+            </Link>
+          ))}
+        </div>
       </div>
     </div>
-  );
+  )
 }

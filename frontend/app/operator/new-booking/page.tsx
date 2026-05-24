@@ -1,351 +1,568 @@
 'use client'
-// DrukPass — New Booking Page (full redesign)
+
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 
-const BHUTAN_DISTRICTS = ["Paro", "Thimphu", "Punakha", "Bumthang", "Haa", "Lhuntse", "Gasa", "Wangdue Phodrang", "Trongsa", "Mongar", "Trashigang", "Zhemgang", "Tsirang", "Dagana", "Chhukha"];
-
-const PURPOSES = [
-  { value: "leisure", label: "Leisure / Sightseeing" },
-  { value: "trekking", label: "Trekking / Hiking" },
-  { value: "cultural", label: "Cultural / Religious" },
-  { value: "business", label: "Business" },
-  { value: "volunteer", label: "Volunteering / NGO" },
-];
-
-const ENTRY_POINTS = ["Paro Airport", "Phuentsholing", "Gelephu", "Samdrup Jongkhar"];
-
 const COUNTRIES = [
-  { code: "JP", name: "Japan 🇯🇵" }, { code: "US", name: "United States 🇺🇸" }, { code: "GB", name: "United Kingdom 🇬🇧" },
-  { code: "DE", name: "Germany 🇩🇪" }, { code: "FR", name: "France 🇫🇷" }, { code: "AU", name: "Australia 🇦🇺" },
-  { code: "IN", name: "India 🇮🇳" }, { code: "CN", name: "China 🇨🇳" }, { code: "KR", name: "South Korea 🇰🇷" },
-  { code: "SG", name: "Singapore 🇸🇬" }, { code: "CA", name: "Canada 🇨🇦" }, { code: "NZ", name: "New Zealand 🇳🇿" },
-  { code: "BD", name: "Bangladesh 🇧🇩" }, { code: "MV", name: "Maldives 🇲🇻" }, { code: "NL", name: "Netherlands 🇳🇱" },
-  { code: "IT", name: "Italy 🇮🇹" }, { code: "ES", name: "Spain 🇪🇸" }, { code: "CH", name: "Switzerland 🇨🇭" },
-  { code: "SE", name: "Sweden 🇸🇪" }, { code: "NO", name: "Norway 🇳🇴" }, { code: "DK", name: "Denmark 🇩🇰" },
-  { code: "AT", name: "Austria 🇦🇹" }, { code: "BE", name: "Belgium 🇧🇪" }, { code: "IL", name: "Israel 🇮🇱" },
-  { code: "BR", name: "Brazil 🇧🇷" }, { code: "MX", name: "Mexico 🇲🇽" }, { code: "ZA", name: "South Africa 🇿🇦" },
-  { code: "TH", name: "Thailand 🇹🇭" }, { code: "MY", name: "Malaysia 🇲🇾" }, { code: "PH", name: "Philippines 🇵🇭" },
-];
+  'Afghanistan','Albania','Algeria','Argentina','Australia','Austria',
+  'Bangladesh','Belgium','Brazil','Brunei','Cambodia','Canada','Chile',
+  'China','Colombia','Czech Republic','Denmark','Ecuador','Egypt',
+  'Finland','France','Germany','Ghana','Greece','Hungary','Iceland',
+  'India','Indonesia','Iran','Ireland','Israel','Italy','Japan','Jordan',
+  'Kazakhstan','Kenya','Kuwait','Latvia','Lebanon','Malaysia','Maldives',
+  'Mexico','Mongolia','Morocco','Myanmar','Nepal','Netherlands',
+  'New Zealand','Nigeria','Norway','Oman','Pakistan','Peru','Philippines',
+  'Poland','Portugal','Qatar','Romania','Russia','Saudi Arabia','Singapore',
+  'South Africa','South Korea','Spain','Sri Lanka','Sweden','Switzerland',
+  'Thailand','Turkey','Ukraine','United Arab Emirates','United Kingdom',
+  'United States','Uzbekistan','Vietnam','Zimbabwe',
+]
 
-type AgentStep = { id: string; label: string; status: "waiting" | "running" | "done"; result?: string };
-type ChainResult = { eligibility_result?: Record<string, unknown>; sdf_result?: Record<string, unknown>; permits?: Array<Record<string, unknown>>; processing_duration_ms?: number; status?: string };
+const ENTRY_POINTS = [
+  'Paro International Airport',
+  'Phuentsholing Land Border',
+  'Gelephu Land Border',
+  'Samdrup Jongkhar Land Border',
+]
 
-export default function NewBookingPage() {
-  const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [submitting, setSubmitting] = useState(false);
-  const [chainResult, setChainResult] = useState<ChainResult | null>(null);
-  const [agentSteps, setAgentSteps] = useState<AgentStep[]>([
-    { id: "eligibility", label: "Eligibility Agent — checking nationality rules", status: "waiting" },
-    { id: "sdf", label: "SDF Calculator — computing Sustainable Development Fee", status: "waiting" },
-    { id: "permit", label: "Permit Agent — generating documents with QR codes", status: "waiting" },
-    { id: "gov", label: "Government Queue — permit sent for officer review", status: "waiting" },
-  ]);
+const DISTRICTS = [
+  'Bumthang','Chhukha','Dagana','Gasa','Haa','Lhuntse','Mongar','Paro',
+  'Pemagatshel','Punakha','Samdrup Jongkhar','Samtse','Sarpang','Thimphu',
+  'Trashigang','Trashiyangtse','Trongsa','Tsirang','Wangdue Phodrang','Zhemgang',
+]
 
-  const [form, setForm] = useState({
-    // Step 1: Traveler
-    traveler_name: "", nationality: "", passport_number: "", traveler_age: "",
-    traveler_email: "",
-    // Step 2: Travel
-    entry_date: "", exit_date: "", entry_point: "Paro Airport",
-    travel_purpose: "leisure", districts: [] as string[],
-    companions_count: "0", special_requirements: "",
-  });
+const TRAVEL_PURPOSES = [
+  'Tourism','Cultural Tourism','Adventure Tourism','Business','Conference/Event',
+  'Film/Media Production','Research/Academic','Religious Pilgrimage','VIP/Diplomatic',
+]
 
-  const update = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
+const REGIONAL_COUNTRIES = ['India','Bangladesh','Maldives','Nepal','Sri Lanka']
 
-  const toggleDistrict = (d: string) => {
-    setForm(f => ({ ...f, districts: f.districts.includes(d) ? f.districts.filter(x => x !== d) : [...f.districts, d] }));
-  };
+type Step = 1 | 2 | 3
 
-  const durationDays = form.entry_date && form.exit_date
-    ? Math.max(1, Math.ceil((new Date(form.exit_date).getTime() - new Date(form.entry_date).getTime()) / 86400000))
-    : 0;
+interface TravelerForm {
+  name: string; nationality: string; passport: string; dob: string; email: string
+}
+interface TravelForm {
+  entryDate: string; exitDate: string; entryPoint: string; districts: string[]; purpose: string
+}
 
-  const animateAgentChain = async (result: ChainResult) => {
-    const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
-    const update = (id: string, status: AgentStep["status"], res?: string) =>
-      setAgentSteps(steps => steps.map(s => s.id === id ? { ...s, status, result: res } : s));
+// ── Searchable Dropdown ────────────────────────────────────────────────────────
 
-    update("eligibility", "running");
-    await delay(900);
-    const regime = (result.eligibility_result as Record<string, unknown>)?.nationality_regime as string || "international";
-    const permitType = (result.eligibility_result as Record<string, unknown>)?.primary_permit_type as string || "tourist_visa";
-    update("eligibility", "done", `${regime === "regional" ? "Regional" : "International"} regime → ${permitType.replace(/_/g, " ")}`);
+function SearchableDropdown({
+  options, value, onChange, placeholder,
+}: {
+  options: string[]; value: string; onChange: (v: string) => void; placeholder: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const filtered = options.filter(o => o.toLowerCase().includes(query.toLowerCase())).slice(0, 40)
 
-    update("sdf", "running");
-    await delay(800);
-    const sdf = result.sdf_result as Record<string, unknown>;
-    const sdfAmount = sdf ? `$${(sdf.total_amount_usd as number).toLocaleString()} USD (${sdf.season} season)` : "Calculated";
-    update("sdf", "done", sdfAmount);
-
-    update("permit", "running");
-    await delay(700);
-    const permits = result.permits || [];
-    update("permit", "done", `${permits.length} permit${permits.length !== 1 ? "s" : ""} generated`);
-
-    update("gov", "running");
-    await delay(500);
-    update("gov", "done", "Queued for officer review");
-  };
-
-  // Simulate chain for demo (when API not available)
-  const simulateChain = async () => {
-    const regional = ["IN", "BD", "MV"].includes(form.nationality);
-    const hasRestricted = form.districts.some(d => ["Haa", "Lhuntse", "Gasa"].includes(d));
-    const entryMonth = form.entry_date ? new Date(form.entry_date).getMonth() + 1 : new Date().getMonth() + 1;
-    const peakMonths = [3, 4, 5, 9, 10, 11];
-    const dailyRate = regional ? 15 : (peakMonths.includes(entryMonth) ? 250 : 200);
-    const total = dailyRate * durationDays;
-    const permits: Array<Record<string, unknown>> = [
-      { permit_number: `BTG-${new Date().getFullYear()}-${regional ? "RT" : "TV"}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`, permit_type: regional ? "regional_tourist" : "tourist_visa", status: "government_review" }
-    ];
-    if (hasRestricted) permits.push({ permit_number: `BTG-${new Date().getFullYear()}-RA-${Math.random().toString(36).substring(2, 10).toUpperCase()}`, permit_type: "restricted_area_permit", status: "government_review" });
-
-    return {
-      eligibility_result: { nationality_regime: regional ? "regional" : "international", primary_permit_type: regional ? "regional_tourist" : "tourist_visa", eligible: true },
-      sdf_result: { daily_rate_usd: dailyRate, duration_days: durationDays, total_amount_usd: total, season: peakMonths.includes(entryMonth) ? "peak" : "low", waiver_applied: false },
-      permits,
-      processing_duration_ms: Math.floor(Math.random() * 2000) + 1500,
-      status: "completed",
-    };
-  };
-
-  const handleSubmit = async () => {
-    setSubmitting(true);
-    setStep(3);
-
-    const bookingData = {
-      traveler_name: form.traveler_name,
-      nationality: form.nationality,
-      passport_number: form.passport_number,
-      traveler_age: form.traveler_age ? parseInt(form.traveler_age) : null,
-      traveler_email: form.traveler_email,
-      entry_date: form.entry_date,
-      exit_date: form.exit_date,
-      entry_point: form.entry_point,
-      travel_purpose: form.travel_purpose,
-      districts: form.districts,
-      duration_days: durationDays,
-      companions_count: parseInt(form.companions_count) || 0,
-      special_requirements: form.special_requirements,
-    };
-
-    let result: ChainResult;
-    try {
-      result = await api.createBooking(bookingData) as ChainResult;
-    } catch {
-      // Demo fallback
-      result = await simulateChain();
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
-
-    setChainResult(result);
-    await animateAgentChain(result);
-    setSubmitting(false);
-  };
-
-  const allDone = agentSteps.every(s => s.status === "done");
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   return (
-    <div className="min-h-screen bg-amber-50">
-      {/* Header */}
-      <header className="bg-orange-700 text-white px-6 py-4 shadow">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.push("/operator")} className="text-orange-200 hover:text-white text-sm">← Back</button>
-            <span className="text-orange-300">|</span>
-            <h1 className="font-bold">New Booking</h1>
-          </div>
-          <span className="text-orange-200 text-sm">DrukPass Operator Portal</span>
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        value={open ? query : value}
+        onFocus={() => { setOpen(true); setQuery('') }}
+        onChange={e => setQuery(e.target.value)}
+        placeholder={placeholder}
+        className="w-full border border-[#E5DDD0] rounded-lg px-3 py-2.5 text-sm text-[#374151] placeholder-[#9CA3AF] focus:outline-none focus:border-[#E8762E] bg-white"
+      />
+      {open && (
+        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-[#E5DDD0] rounded-lg shadow-xl max-h-52 overflow-y-auto">
+          {filtered.length === 0
+            ? <div className="px-3 py-2 text-sm text-[#9CA3AF]">No results</div>
+            : filtered.map(opt => (
+              <button key={opt} type="button"
+                onClick={() => { onChange(opt); setOpen(false); setQuery('') }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-[#FFF8E7] transition-colors ${opt === value ? 'font-semibold text-[#E8762E] bg-[#FFF8E7]' : 'text-[#374151]'}`}>
+                {opt}
+              </button>
+            ))
+          }
         </div>
-      </header>
+      )}
+    </div>
+  )
+}
 
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        {/* Step Indicator */}
-        {step < 3 && (
-          <div className="flex items-center gap-2 mb-8">
-            {["Traveler Details", "Travel Details", "Processing"].map((label, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${step > i + 1 ? "bg-green-600 text-white" : step === i + 1 ? "bg-orange-700 text-white" : "bg-slate-200 text-slate-500"}`}>
-                  {step > i + 1 ? "✓" : i + 1}
+// ── Agent Chain Animation ──────────────────────────────────────────────────────
+
+interface AgentStep {
+  id: string; icon: string; agent: string; desc: string
+  status: 'waiting' | 'running' | 'done' | 'queued'; ms?: number
+}
+
+const STEP_DEFS = [
+  { id:'s1', icon:'🔍', agent:'Eligibility Agent',  desc:'Checking nationality rules, visa requirements, and travel restrictions for Bhutan entry...' },
+  { id:'s2', icon:'💰', agent:'SDF Calculator',     desc:'Computing Sustainable Development Fee based on duration and traveler category...' },
+  { id:'s3', icon:'📄', agent:'Permit Generator',   desc:'Creating digital permits for selected districts with QR authentication codes...' },
+  { id:'s4', icon:'🏛️', agent:'Government Queue',   desc:'Submitting to Tourism Council of Bhutan for regulatory review and formal approval.' },
+]
+
+const DURATIONS = [1400, 600, 900, 400]
+
+function AgentChainScreen({ traveler, travel, onReset }: {
+  traveler: TravelerForm; travel: TravelForm; onReset: () => void
+}) {
+  const [steps, setSteps] = useState<AgentStep[]>(
+    STEP_DEFS.map((s, i) => ({ ...s, status: (i === 0 ? 'running' : 'waiting') as AgentStep['status'] }))
+  )
+  const [phase, setPhase]     = useState<'chain' | 'result'>('chain')
+  const [totalMs, setTotalMs] = useState(0)
+  const [permitNum]           = useState(() => `TP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 8000)}`)
+
+  const dayMs      = 1000 * 60 * 60 * 24
+  const days       = Math.max(1, Math.round((new Date(travel.exitDate).getTime() - new Date(travel.entryDate).getTime()) / dayMs))
+  const isRegional = REGIONAL_COUNTRIES.includes(traveler.nationality)
+  const rate       = isRegional ? 1200 : 100
+  const sdfUSD     = days * rate
+
+  useEffect(() => {
+    let accMs = 0
+    function runStep(idx: number) {
+      if (idx >= STEP_DEFS.length) { setTotalMs(accMs); setTimeout(() => setPhase('result'), 600); return }
+      const dur = DURATIONS[idx]; accMs += dur
+      setSteps(prev => prev.map((s, i) => i === idx ? { ...s, status: 'running' as const } : s))
+      setTimeout(() => {
+        const fs = idx === STEP_DEFS.length - 1 ? 'queued' as const : 'done' as const
+        setSteps(prev => prev.map((s, i) =>
+          i === idx ? { ...s, status: fs, ms: dur } :
+          i === idx + 1 ? { ...s, status: 'running' as const } : s
+        ))
+        runStep(idx + 1)
+      }, dur)
+    }
+    runStep(0)
+  }, [])
+
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+
+  return (
+    <div className="min-h-screen bg-[#F9F6F0] flex flex-col items-center justify-center px-6 py-12">
+      <div className="w-full max-w-lg">
+        {phase === 'chain' ? (
+          <>
+            <div className="text-center mb-10">
+              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#E8762E] to-[#C0392B] flex items-center justify-center text-4xl mx-auto mb-5 shadow-xl">
+                🤖
+              </div>
+              <h2 className="text-2xl font-bold text-[#374151]">Agent Chain Processing</h2>
+              <p className="text-[#6B7280] text-sm mt-1.5">Automated permit workflow running in real-time...</p>
+            </div>
+            <div className="space-y-3">
+              {steps.map((step) => {
+                const isRunning = step.status === 'running'
+                const isDone    = step.status === 'done'
+                const isQueued  = step.status === 'queued'
+                return (
+                  <div key={step.id} className={`rounded-xl border p-4 transition-all duration-300 ${
+                    isRunning ? 'bg-blue-50 border-blue-200 shadow-lg scale-[1.01]' :
+                    isDone    ? 'bg-green-50 border-green-200' :
+                    isQueued  ? 'bg-amber-50 border-amber-200' :
+                                'bg-white border-[#E5DDD0] opacity-40'
+                  }`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 text-2xl ${
+                        isRunning ? 'bg-blue-100' : isDone ? 'bg-green-100' : isQueued ? 'bg-amber-100' : 'bg-[#F0EBE3]'
+                      }`}>
+                        {isRunning ? (
+                          <svg className="w-5 h-5 text-blue-500 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                        ) : isDone ? '✅' : isQueued ? '⏳' : step.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-sm font-bold ${
+                          isRunning ? 'text-blue-800' : isDone ? 'text-green-800' : isQueued ? 'text-amber-800' : 'text-[#C4BAB0]'
+                        }`}>
+                          {isRunning && <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse mr-2 align-middle" />}
+                          {step.agent}
+                        </div>
+                        <div className={`text-xs mt-0.5 leading-relaxed ${
+                          isRunning ? 'text-blue-600' : isDone ? 'text-green-600' : isQueued ? 'text-amber-600' : 'text-[#C4BAB0]'
+                        }`}>
+                          {isQueued ? 'Queued for government review — awaiting Tourism Council approval.' : step.desc}
+                        </div>
+                        {isRunning && (
+                          <div className="flex gap-0.5 mt-2">
+                            {[0,1,2].map(i => (
+                              <div key={i} className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce"
+                                style={{ animationDelay: `${i * 0.12}s` }} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {(isDone || isQueued) && step.ms && (
+                        <span className="text-[10px] font-mono text-[#9CA3AF] bg-white border border-[#E5DDD0] rounded-full px-2 py-0.5 flex-shrink-0">
+                          {step.ms}ms
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="animate-fade-in">
+            <div className="text-center mb-7">
+              <div className="w-20 h-20 rounded-full bg-green-100 border-4 border-green-300 flex items-center justify-center text-4xl mx-auto mb-4 shadow-lg">
+                ✅
+              </div>
+              <h2 className="text-2xl font-bold text-[#374151]">Booking Submitted</h2>
+              <p className="text-[#6B7280] text-sm mt-1">
+                Chain completed in <span className="font-semibold text-[#E8762E]">{totalMs.toLocaleString()}ms</span>
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl border-2 border-[#2E7D32] shadow-lg overflow-hidden mb-4">
+              <div className="h-1.5 bg-gradient-to-r from-[#2E7D32] to-[#4CAF50]" />
+              <div className="p-5">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <div className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-wider">Tourism Permit</div>
+                    <div className="font-mono text-xl font-bold text-[#374151] mt-0.5 tracking-wide">{permitNum}</div>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Pending Review
+                  </span>
                 </div>
-                <span className={`text-sm ${step === i + 1 ? "font-semibold text-orange-800" : "text-slate-400"}`}>{label}</span>
-                {i < 2 && <div className={`flex-1 h-px ${step > i + 1 ? "bg-green-400" : "bg-slate-200"} min-w-8`} />}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Step 1: Traveler Details */}
-        {step === 1 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-amber-100 p-8">
-            <h2 className="text-xl font-bold text-slate-800 mb-6">Traveler Details</h2>
-            <div className="grid grid-cols-2 gap-5">
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-1">Full Name <span className="text-red-500">*</span></label>
-                <input className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm" value={form.traveler_name} onChange={e => update("traveler_name", e.target.value)} placeholder="As per passport" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nationality <span className="text-red-500">*</span></label>
-                <select className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm bg-white" value={form.nationality} onChange={e => update("nationality", e.target.value)}>
-                  <option value="">Select country</option>
-                  {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
-                </select>
-                {form.nationality && ["IN", "BD", "MV"].includes(form.nationality) && (
-                  <p className="text-xs text-green-700 mt-1 font-medium">✓ Regional scheme — $15/day SDF</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Passport Number <span className="text-red-500">*</span></label>
-                <input className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm font-mono" value={form.passport_number} onChange={e => update("passport_number", e.target.value)} placeholder="e.g. JP1234567" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Age</label>
-                <input type="number" className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm" value={form.traveler_age} onChange={e => update("traveler_age", e.target.value)} placeholder="Leave blank if adult" min="0" max="120" />
-                <p className="text-xs text-slate-400 mt-1">Required for waiver eligibility</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                <input type="email" className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm" value={form.traveler_email} onChange={e => update("traveler_email", e.target.value)} placeholder="traveler@email.com" />
-              </div>
-            </div>
-            <div className="mt-8 flex justify-end">
-              <button onClick={() => setStep(2)} disabled={!form.traveler_name || !form.nationality || !form.passport_number} className="bg-orange-700 text-white px-8 py-3 rounded-lg font-semibold hover:bg-orange-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                Next: Travel Details →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Travel Details */}
-        {step === 2 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-amber-100 p-8">
-            <h2 className="text-xl font-bold text-slate-800 mb-6">Travel Details</h2>
-            <div className="grid grid-cols-2 gap-5">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Entry Date <span className="text-red-500">*</span></label>
-                <input type="date" className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm" value={form.entry_date} onChange={e => update("entry_date", e.target.value)} min={new Date().toISOString().split("T")[0]} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Exit Date <span className="text-red-500">*</span></label>
-                <input type="date" className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm" value={form.exit_date} onChange={e => update("exit_date", e.target.value)} min={form.entry_date || new Date().toISOString().split("T")[0]} />
-                {durationDays > 0 && <p className="text-xs text-orange-700 mt-1 font-medium">{durationDays} nights</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Entry Point <span className="text-red-500">*</span></label>
-                <select className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm bg-white" value={form.entry_point} onChange={e => update("entry_point", e.target.value)}>
-                  {ENTRY_POINTS.map(p => <option key={p}>{p}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Travel Purpose <span className="text-red-500">*</span></label>
-                <select className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm bg-white" value={form.travel_purpose} onChange={e => update("travel_purpose", e.target.value)}>
-                  {PURPOSES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-slate-700 mb-2">Districts to Visit <span className="text-red-500">*</span></label>
-                <div className="grid grid-cols-3 gap-2">
-                  {BHUTAN_DISTRICTS.map(d => {
-                    const isRestricted = ["Haa", "Lhuntse", "Gasa"].includes(d);
-                    const selected = form.districts.includes(d);
-                    return (
-                      <button key={d} onClick={() => toggleDistrict(d)}
-                        className={`px-3 py-2 rounded-lg text-xs font-medium border transition-all text-left ${selected ? "bg-orange-700 text-white border-orange-700" : "bg-white text-slate-600 border-slate-200 hover:border-orange-300"}`}>
-                        {d} {isRestricted && <span className={`${selected ? "text-orange-200" : "text-red-500"}`}>🔒</span>}
-                      </button>
-                    );
-                  })}
+                <div className="grid grid-cols-2 gap-3 text-sm mb-4">
+                  <div>
+                    <div className="text-[10px] text-[#9CA3AF] font-semibold uppercase tracking-wider">Traveler</div>
+                    <div className="font-semibold text-[#374151]">{traveler.name}</div>
+                    <div className="text-[#6B7280] text-xs">{traveler.nationality}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-[#9CA3AF] font-semibold uppercase tracking-wider">Entry</div>
+                    <div className="font-semibold text-[#374151] text-xs leading-snug">{travel.entryPoint}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-[#9CA3AF] font-semibold uppercase tracking-wider">Stay</div>
+                    <div className="font-semibold text-[#374151] text-xs">{fmtDate(travel.entryDate)} to {fmtDate(travel.exitDate)}</div>
+                    <div className="text-[#6B7280] text-xs">{days} day{days !== 1 ? 's' : ''}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-[#9CA3AF] font-semibold uppercase tracking-wider">SDF Due</div>
+                    <div className="font-bold text-[#E8762E] text-xl">${sdfUSD.toLocaleString()}</div>
+                    <div className="text-[11px] text-[#9CA3AF]">{days}d x ${rate}/day</div>
+                  </div>
                 </div>
-                {form.districts.some(d => ["Haa", "Lhuntse", "Gasa"].includes(d)) && (
-                  <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
-                    🔒 Restricted area permit required — additional $50 fee + extra processing time
+                <div>
+                  <div className="text-[10px] text-[#9CA3AF] font-semibold uppercase tracking-wider mb-1.5">Districts Approved</div>
+                  <div className="flex flex-wrap gap-1">
+                    {travel.districts.map(d => (
+                      <span key={d} className="text-[11px] bg-[#FFF8E7] text-[#E8762E] border border-[#F5D5B0] rounded-full px-2 py-0.5 font-medium">{d}</span>
+                    ))}
                   </div>
-                )}
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Companions</label>
-                <input type="number" className="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-400 text-sm" value={form.companions_count} onChange={e => update("companions_count", e.target.value)} min="0" max="50" />
-              </div>
-            </div>
-            <div className="mt-8 flex items-center justify-between">
-              <button onClick={() => setStep(1)} className="text-slate-500 hover:text-slate-700 font-medium">← Back</button>
-              <button onClick={handleSubmit} disabled={!form.entry_date || !form.exit_date || form.districts.length === 0}
-                className="bg-orange-700 text-white px-8 py-3 rounded-lg font-semibold hover:bg-orange-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                ⚡ Submit &amp; Run Agent Chain
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Agent Chain Animation */}
-        {step === 3 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-amber-100 p-8">
-            <div className="text-center mb-8">
-              <div className="text-4xl mb-3">⚡</div>
-              <h2 className="text-xl font-bold text-slate-800">DrukPass Agent Chain</h2>
-              <p className="text-slate-500 text-sm mt-1">Automated regulatory processing — {form.traveler_name} ({form.nationality})</p>
             </div>
 
-            <div className="space-y-4">
-              {agentSteps.map((s, i) => (
-                <div key={s.id} className={`flex items-start gap-4 p-4 rounded-xl border transition-all ${s.status === "done" ? "bg-green-50 border-green-200" : s.status === "running" ? "bg-orange-50 border-orange-300" : "bg-slate-50 border-slate-100"}`}>
-                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0 ${s.status === "done" ? "bg-green-100" : s.status === "running" ? "bg-orange-100" : "bg-slate-100"}`}>
-                    {s.status === "done" ? "✅" : s.status === "running" ? <span className="animate-spin text-orange-600">⟳</span> : <span className="text-slate-400">{["🔍", "💰", "📄", "🏛️"][i]}</span>}
-                  </div>
-                  <div className="flex-1">
-                    <p className={`font-medium text-sm ${s.status === "done" ? "text-green-800" : s.status === "running" ? "text-orange-800" : "text-slate-400"}`}>{s.label}</p>
-                    {s.result && <p className="text-xs text-green-700 mt-1 font-medium">{s.result}</p>}
-                    {s.status === "running" && <div className="mt-1 h-1 bg-orange-200 rounded-full overflow-hidden"><div className="h-1 bg-orange-500 rounded-full animate-pulse w-2/3" /></div>}
-                  </div>
+            <div className="bg-white rounded-xl border border-[#E5DDD0] p-4 mb-4">
+              <div className="text-xs font-bold text-[#374151] uppercase tracking-wider mb-3">Documents Required for Entry</div>
+              {[
+                'Valid passport (minimum 6 months validity from entry date)',
+                'Comprehensive travel insurance with medical evacuation cover',
+                `SDF payment receipt for $${sdfUSD.toLocaleString()} USD`,
+                'Visa on arrival or pre-approved Bhutan visa',
+                'Confirmed operator booking and guide assignment letter',
+              ].map((doc, i) => (
+                <div key={i} className="flex items-start gap-2.5 py-2 border-b border-[#F9F6F0] last:border-0">
+                  <span className="text-[#D1D5DB] mt-0.5 flex-shrink-0 text-sm">-</span>
+                  <span className="text-sm text-[#6B7280]">{doc}</span>
                 </div>
               ))}
             </div>
 
-            {allDone && chainResult && (
-              <div className="mt-8">
-                <div className="bg-green-50 border border-green-200 rounded-xl p-5 mb-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-bold text-green-800 flex items-center gap-2">✅ Processing Complete</h3>
-                    {chainResult.processing_duration_ms && (
-                      <span className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-semibold">
-                        ⚡ {chainResult.processing_duration_ms.toLocaleString()}ms
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    {chainResult.permits?.map((permit: Record<string, unknown>, i) => (
-                      <div key={i} className="bg-white border border-green-200 rounded-lg p-3">
-                        <p className="text-xs text-green-600 font-medium mb-1">{String(permit.permit_type || "").replace(/_/g, " ").toUpperCase()}</p>
-                        <p className="font-mono text-xs font-bold text-slate-700">{String(permit.permit_number || "")}</p>
-                        <p className="text-xs text-amber-600 mt-1">⏳ Awaiting government approval</p>
-                      </div>
-                    ))}
-                    {chainResult.sdf_result && (
-                      <div className="bg-white border border-green-200 rounded-lg p-3">
-                        <p className="text-xs text-green-600 font-medium mb-1">SDF AMOUNT</p>
-                        <p className="font-bold text-slate-700">${Number((chainResult.sdf_result as Record<string, unknown>).total_amount_usd || 0).toLocaleString()} USD</p>
-                        <p className="text-xs text-slate-500 mt-1">{durationDays} nights × ${Number((chainResult.sdf_result as Record<string, unknown>).daily_rate_usd || 0)}/day ({String((chainResult.sdf_result as Record<string, unknown>).season || "")}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <button onClick={() => router.push("/operator")} className="flex-1 bg-orange-700 text-white py-3 rounded-lg font-semibold hover:bg-orange-800 transition-colors">
-                    View All Bookings →
-                  </button>
-                  <button onClick={() => { setStep(1); setChainResult(null); setAgentSteps(s => s.map(x => ({ ...x, status: "waiting", result: undefined }))); }} className="flex-1 border border-orange-300 text-orange-700 py-3 rounded-lg font-semibold hover:bg-orange-50 transition-colors">
-                    + New Booking
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="flex gap-3">
+              <Link href="/operator" className="flex-1 bg-[#E8762E] text-white font-semibold py-3 rounded-xl text-center hover:bg-[#D4601A] transition-colors shadow-sm">
+                View Dashboard
+              </Link>
+              <button onClick={onReset} className="flex-1 bg-white text-[#374151] font-semibold py-3 rounded-xl border border-[#E5DDD0] hover:bg-[#F9F6F0] transition-colors">
+                New Booking
+              </button>
+            </div>
           </div>
         )}
       </div>
     </div>
-  );
+  )
+}
+
+// ── Main Page ──────────────────────────────────────────────────────────────────
+
+export default function NewBookingPage() {
+  const [step, setStep]           = useState<Step>(1)
+  const [submitted, setSubmitted] = useState(false)
+  const [traveler, setTraveler]   = useState<TravelerForm>({ name:'', nationality:'', passport:'', dob:'', email:'' })
+  const [travel, setTravel]       = useState<TravelForm>({ entryDate:'', exitDate:'', entryPoint:'', districts:[], purpose:'' })
+
+  const updateTraveler = (f: keyof TravelerForm, v: string) => setTraveler(p => ({ ...p, [f]: v }))
+  const updateTravel   = (f: keyof TravelForm, v: string | string[]) => setTravel(p => ({ ...p, [f]: v }))
+  const toggleDistrict = (d: string) => setTravel(p => ({
+    ...p, districts: p.districts.includes(d) ? p.districts.filter(x => x !== d) : [...p.districts, d]
+  }))
+  const handleReset = () => {
+    setSubmitted(false); setStep(1)
+    setTraveler({ name:'', nationality:'', passport:'', dob:'', email:'' })
+    setTravel({ entryDate:'', exitDate:'', entryPoint:'', districts:[], purpose:'' })
+  }
+
+  const step1Valid = !!(traveler.name && traveler.nationality && traveler.passport && traveler.dob && traveler.email)
+  const step2Valid = !!(travel.entryDate && travel.exitDate && travel.entryPoint && travel.districts.length > 0 && travel.purpose)
+
+  const dayMs      = 1000 * 60 * 60 * 24
+  const days       = travel.entryDate && travel.exitDate
+    ? Math.max(1, Math.round((new Date(travel.exitDate).getTime() - new Date(travel.entryDate).getTime()) / dayMs))
+    : 0
+  const isRegional = REGIONAL_COUNTRIES.includes(traveler.nationality)
+  const rate       = isRegional ? 1200 : 100
+  const sdfUSD     = days * rate
+
+  if (submitted) return <AgentChainScreen traveler={traveler} travel={travel} onReset={handleReset} />
+
+  const fc = "w-full border border-[#E5DDD0] rounded-lg px-3 py-2.5 text-sm text-[#374151] placeholder-[#9CA3AF] focus:outline-none focus:border-[#E8762E] bg-white"
+  const lc = "block text-xs font-bold text-[#374151] uppercase tracking-wider mb-1.5"
+  const fd = (d: string) => d ? new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : 'Not set'
+
+  return (
+    <div className="min-h-screen bg-[#F9F6F0]">
+      <header className="bg-white border-b border-[#E5DDD0] shadow-sm">
+        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center gap-4">
+          <Link href="/operator" className="text-[#9CA3AF] hover:text-[#374151] text-sm font-medium transition-colors">
+            Back to Bookings
+          </Link>
+          <div className="w-px h-5 bg-[#E5DDD0]" />
+          <div>
+            <div className="text-xs font-bold text-[#9CA3AF] uppercase tracking-widest">Operator Portal</div>
+            <div className="font-bold text-[#374151]">New Booking</div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-3xl mx-auto px-6 py-8">
+        {/* Stepper */}
+        <div className="flex items-center gap-0 mb-9">
+          {['Traveler Details', 'Travel Details', 'Review and Submit'].map((label, idx) => {
+            const n = idx + 1; const isActive = step === n; const isDone = step > n
+            return (
+              <div key={label} className={`flex items-center ${idx < 2 ? 'flex-1' : ''}`}>
+                <div className="flex flex-col items-center">
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
+                    isDone   ? 'bg-[#2E7D32] text-white' :
+                    isActive ? 'bg-[#E8762E] text-white shadow-lg ring-4 ring-[#E8762E]/25' :
+                               'bg-white border-2 border-[#E5DDD0] text-[#9CA3AF]'
+                  }`}>
+                    {isDone ? '✓' : n}
+                  </div>
+                  <div className={`text-[11px] font-semibold mt-1.5 whitespace-nowrap ${
+                    isActive ? 'text-[#E8762E]' : isDone ? 'text-[#2E7D32]' : 'text-[#9CA3AF]'
+                  }`}>{label}</div>
+                </div>
+                {idx < 2 && <div className={`flex-1 h-0.5 mx-3 mb-5 rounded transition-all ${isDone ? 'bg-[#2E7D32]' : 'bg-[#E5DDD0]'}`} />}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Step 1 */}
+        {step === 1 && (
+          <div className="bg-white rounded-2xl border border-[#E5DDD0] p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-[#374151] mb-5">Traveler Details</h2>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={lc}>Full Name</label>
+                  <input type="text" value={traveler.name} onChange={e => updateTraveler('name', e.target.value)}
+                    placeholder="As shown on passport" className={fc} />
+                </div>
+                <div>
+                  <label className={lc}>Nationality</label>
+                  <SearchableDropdown options={COUNTRIES} value={traveler.nationality}
+                    onChange={v => updateTraveler('nationality', v)} placeholder="Search country..." />
+                  {isRegional && <p className="text-xs text-green-700 mt-1 font-medium">SAARC region — $1,200/day SDF rate</p>}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={lc}>Passport Number</label>
+                  <input type="text" value={traveler.passport}
+                    onChange={e => updateTraveler('passport', e.target.value.toUpperCase())}
+                    placeholder="e.g. N4821903" className={`${fc} font-mono tracking-wider`} />
+                </div>
+                <div>
+                  <label className={lc}>Date of Birth</label>
+                  <input type="date" value={traveler.dob} onChange={e => updateTraveler('dob', e.target.value)} className={fc} />
+                </div>
+              </div>
+              <div>
+                <label className={lc}>Email Address</label>
+                <input type="email" value={traveler.email} onChange={e => updateTraveler('email', e.target.value)}
+                  placeholder="traveler@email.com" className={fc} />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button onClick={() => setStep(2)} disabled={!step1Valid}
+                className="bg-[#E8762E] text-white font-semibold px-8 py-2.5 rounded-lg hover:bg-[#D4601A] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                Continue
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2 */}
+        {step === 2 && (
+          <div className="bg-white rounded-2xl border border-[#E5DDD0] p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-[#374151] mb-5">Travel Details</h2>
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={lc}>Entry Date</label>
+                  <input type="date" value={travel.entryDate} onChange={e => updateTravel('entryDate', e.target.value)} className={fc} />
+                </div>
+                <div>
+                  <label className={lc}>Exit Date</label>
+                  <input type="date" value={travel.exitDate} min={travel.entryDate}
+                    onChange={e => updateTravel('exitDate', e.target.value)} className={fc} />
+                </div>
+              </div>
+
+              {days > 0 && (
+                <div className="bg-[#FFF8E7] border border-[#F5D5B0] rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-[#E8762E] uppercase tracking-wider">Duration</div>
+                    <div className="font-bold text-[#374151]">{days} day{days !== 1 ? 's' : ''}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-bold text-[#E8762E] uppercase tracking-wider">Estimated SDF</div>
+                    <div className="font-bold text-[#374151] text-xl">${sdfUSD.toLocaleString()} <span className="text-xs text-[#9CA3AF]">USD</span></div>
+                    <div className="text-[11px] text-[#9CA3AF]">{days} x ${rate}/day</div>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className={lc}>Entry Point</label>
+                <select value={travel.entryPoint} onChange={e => updateTravel('entryPoint', e.target.value)} className={fc}>
+                  <option value="">Select entry point...</option>
+                  {ENTRY_POINTS.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className={lc}>
+                  Districts to Visit{' '}
+                  <span className="text-[#9CA3AF] font-normal normal-case tracking-normal">({travel.districts.length} selected)</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {DISTRICTS.map(d => {
+                    const checked = travel.districts.includes(d)
+                    return (
+                      <label key={d} className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-all ${
+                        checked ? 'bg-[#FFF8E7] border-[#E8762E]' : 'bg-white border-[#E5DDD0] hover:border-[#E8762E]/40'
+                      }`}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleDistrict(d)} className="sr-only" />
+                        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                          checked ? 'bg-[#E8762E] border-[#E8762E]' : 'border-[#D1D5DB]'
+                        }`}>
+                          {checked && (
+                            <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 10" fill="none">
+                              <path d="M2 5l2.5 2.5 3.5-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className={`text-xs font-medium ${checked ? 'text-[#E8762E]' : 'text-[#6B7280]'}`}>{d}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className={lc}>Travel Purpose</label>
+                <select value={travel.purpose} onChange={e => updateTravel('purpose', e.target.value)} className={fc}>
+                  <option value="">Select purpose...</option>
+                  {TRAVEL_PURPOSES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="mt-6 flex gap-3 justify-between">
+              <button onClick={() => setStep(1)} className="text-[#6B7280] font-medium px-4 py-2.5 hover:text-[#374151] transition-colors">Back</button>
+              <button onClick={() => setStep(3)} disabled={!step2Valid}
+                className="bg-[#E8762E] text-white font-semibold px-8 py-2.5 rounded-lg hover:bg-[#D4601A] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                Continue
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 */}
+        {step === 3 && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl border border-[#E5DDD0] p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-[#374151] mb-5">Review and Submit</h2>
+              <div className="space-y-4">
+                <div className="bg-[#F9F6F0] rounded-xl p-4 border border-[#F0EBE3]">
+                  <div className="text-xs font-bold text-[#9CA3AF] uppercase tracking-wider mb-3">Traveler</div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div><span className="text-[#9CA3AF] text-xs">Name</span><div className="font-semibold text-[#374151]">{traveler.name}</div></div>
+                    <div><span className="text-[#9CA3AF] text-xs">Nationality</span><div className="font-semibold text-[#374151]">{traveler.nationality}</div></div>
+                    <div><span className="text-[#9CA3AF] text-xs">Passport</span><div className="font-mono text-[#374151]">{traveler.passport}</div></div>
+                    <div><span className="text-[#9CA3AF] text-xs">Email</span><div className="text-[#374151] text-xs truncate">{traveler.email}</div></div>
+                  </div>
+                </div>
+                <div className="bg-[#F9F6F0] rounded-xl p-4 border border-[#F0EBE3]">
+                  <div className="text-xs font-bold text-[#9CA3AF] uppercase tracking-wider mb-3">Travel</div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div><span className="text-[#9CA3AF] text-xs">Entry</span><div className="font-semibold text-[#374151]">{fd(travel.entryDate)}</div></div>
+                    <div><span className="text-[#9CA3AF] text-xs">Exit</span><div className="font-semibold text-[#374151]">{fd(travel.exitDate)}</div></div>
+                    <div><span className="text-[#9CA3AF] text-xs">Duration</span><div className="font-semibold text-[#374151]">{days} day{days !== 1 ? 's' : ''}</div></div>
+                    <div><span className="text-[#9CA3AF] text-xs">Purpose</span><div className="font-semibold text-[#374151]">{travel.purpose}</div></div>
+                    <div className="col-span-2"><span className="text-[#9CA3AF] text-xs">Entry Point</span><div className="font-semibold text-[#374151]">{travel.entryPoint}</div></div>
+                    <div className="col-span-2">
+                      <span className="text-[#9CA3AF] text-xs">Districts</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {travel.districts.map(d => (
+                          <span key={d} className="text-[11px] bg-[#FFF8E7] text-[#E8762E] border border-[#F5D5B0] rounded-full px-2 py-0.5 font-medium">{d}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-[#FFF8E7] rounded-xl p-4 border border-[#F5D5B0] flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-[#E8762E] uppercase tracking-wider">SDF (Sustainable Development Fee)</div>
+                    <div className="text-sm text-[#6B7280] mt-0.5">{days} day{days !== 1 ? 's' : ''} x ${rate.toLocaleString()}/day {isRegional ? '(SAARC)' : '(Standard)'}</div>
+                  </div>
+                  <div className="text-3xl font-extrabold text-[#E8762E]">${sdfUSD.toLocaleString()} <span className="text-sm font-semibold">USD</span></div>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setStep(2)} className="bg-white text-[#6B7280] font-medium px-5 py-3 rounded-xl border border-[#E5DDD0] hover:bg-[#F9F6F0] transition-colors">
+                Back
+              </button>
+              <button onClick={() => setSubmitted(true)}
+                className="flex-1 bg-gradient-to-r from-[#E8762E] to-[#C0392B] text-white font-bold py-3.5 rounded-xl hover:opacity-90 transition-all shadow-lg text-base">
+                Submit — Launch Agent Chain
+              </button>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  )
 }
