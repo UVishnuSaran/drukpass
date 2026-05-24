@@ -8,7 +8,7 @@ import uuid
 import json
 import base64
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 try:
@@ -111,7 +111,7 @@ def generate_permit(state: dict) -> dict:
             "booking_reference": booking_ref,
             "sdf_amount_usd": sdf_result.get("total_amount_usd", 0),
             "generated_by": "permit_agent_v1",
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         },
     }
     permits.append(primary_permit)
@@ -155,7 +155,7 @@ def generate_permit(state: dict) -> dict:
                 "traveler_name": traveler_name,
                 "booking_reference": booking_ref,
                 "generated_by": "permit_agent_v1",
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
             },
         }
         permits.append(add_permit)
@@ -169,7 +169,7 @@ def generate_permit(state: dict) -> dict:
             "permit_numbers": [p["permit_number"] for p in permits],
             "statuses": [p["status"] for p in permits],
         },
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
     return {

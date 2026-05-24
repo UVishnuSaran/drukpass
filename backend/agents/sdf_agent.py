@@ -6,7 +6,7 @@ exhaustive test coverage of the fee schedule.
 """
 import json
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 _rules_path = Path(__file__).parent.parent / "data" / "permit_rules.json"
 with open(_rules_path) as f:
@@ -61,7 +61,7 @@ def calculate_sdf(state: dict) -> dict:
             "waiver_applied": result["waiver_applied"],
             "season": result["season"],
         },
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
     return {
@@ -177,5 +177,5 @@ def _compute_sdf(
         "volunteer_waiver_pending": volunteer_waiver_pending,
         "calculation_breakdown": breakdown,
         "agent": "sdf_agent_v1",
-        "processed_at": datetime.utcnow().isoformat(),
+        "processed_at": datetime.now(timezone.utc).isoformat(),
     }

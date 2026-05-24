@@ -66,9 +66,9 @@ Open [http://localhost:3000](http://localhost:3000)
 Demo credentials (seeded automatically):
 | Role | Email | Password |
 |------|-------|----------|
-| 🏛️ Government Officer | pema@btc.gov.bt | demo1234 |
-| 🏢 Tour Operator | karma@himavatours.bt | demo1234 |
-| 🧭 Tourist Guide | tenzin@guides.bt | demo1234 |
+| 🏛️ Government Officer | pema@btc.gov.bt | Demo1234! |
+| 🏢 Tour Operator | karma@himavatours.bt | Demo1234! |
+| 🧭 Tourist Guide | tenzin@guides.bt | Demo1234! |
 
 ---
 

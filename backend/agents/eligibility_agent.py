@@ -8,7 +8,7 @@ The LLM layer handles edge cases and natural language explanations only.
 import json
 from pathlib import Path
 from typing import TypedDict
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Load rules once at startup
 _rules_path = Path(__file__).parent.parent / "data" / "permit_rules.json"
@@ -78,7 +78,7 @@ def check_eligibility(state: dict) -> dict:
             "additional_permits": result["additional_permits"],
             "restricted_districts": result["restricted_districts"],
         },
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
     return {
@@ -179,5 +179,5 @@ def _run_eligibility_rules(
         guide_required=guide_required,
         eligibility_notes=notes,
         agent="eligibility_agent_v1",
-        processed_at=datetime.utcnow().isoformat(),
+        processed_at=datetime.now(timezone.utc).isoformat(),
     )

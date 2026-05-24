@@ -9,7 +9,7 @@ Disruption workflow is a separate graph.
 """
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TypedDict, Annotated, Optional
 import operator
 
@@ -74,7 +74,7 @@ def handle_error(state: WorkflowState) -> WorkflowState:
             "reason": state.get("error", "Eligibility check failed"),
             "status": state.get("status"),
         },
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
     return {**state, "events": events, "status": "rejected"}
 
@@ -140,7 +140,7 @@ def run_booking_chain_sequential(booking_data: dict) -> dict:
             "actor": "agent:orchestrator",
             "event_type": "workflow_started",
             "event_data": {"booking_ref": booking_data.get("reference_code"), "mode": "sequential"},
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }],
         "error": None,
     }
@@ -159,7 +159,7 @@ def run_booking_chain_sequential(booking_data: dict) -> dict:
             "permits_count": len(state.get("permits", [])),
             "sdf_total": state.get("sdf_result", {}).get("total_amount_usd", 0),
         },
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
     state["status"] = "completed"
     return state
@@ -201,7 +201,7 @@ async def process_booking(booking_data: dict) -> dict:
                 "travel_purpose": booking_data.get("travel_purpose"),
                 "districts": booking_data.get("districts", []),
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }],
         "error": None,
     }
@@ -232,7 +232,7 @@ async def process_disruption(disruption_data: dict, affected_bookings: list) -> 
             "actor": "agent:orchestrator",
             "event_type": "disruption_workflow_started",
             "event_data": disruption_data,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }],
         "status": "started",
     }

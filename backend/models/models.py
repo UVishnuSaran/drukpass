@@ -118,7 +118,7 @@ class Permit(Base, TimestampMixin):
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
     qr_code_data: Mapped[Optional[str]] = mapped_column(Text)  # Base64 QR
     document_url: Mapped[Optional[str]] = mapped_column(String(500))
-    metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    permit_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSON)
 
     booking: Mapped["Booking"] = relationship("Booking", back_populates="permits")
     approved_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[approved_by_id])

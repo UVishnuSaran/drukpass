@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --druk-orange: #E8762E;
+  --druk-red:    #C0392B;
+  --druk-green:  #2E7D32;
+  --druk-cream:  #FFF8E7;
+  --druk-slate:  #374151;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #F9F6F0;
+  color: #374151;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F3EDE3;
+}
+::-webkit-scrollbar-thumb {
+  background: #D4B896;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #E8762E;
+}
+
+/* Status badge base */
+.badge {
+  @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide;
+}
+
+/* Pulse dot animation */
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.85); }
+}
+.pulse-dot {
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+/* Agent chain connector line */
+.chain-line {
+  position: absolute;
+  left: 19px;
+  top: 40px;
+  bottom: -8px;
+  width: 2px;
+  background: linear-gradient(to bottom, #E8762E, #FCD9B8);
+}
+
+/* Government card hover */
+.permit-card:hover {
+  box-shadow: 0 4px 16px rgba(232, 118, 46, 0.15);
+  border-color: #E8762E;
+}
+
+/* Monospace permit number */
+.permit-mono {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  letter-spacing: 0.05em;
+}

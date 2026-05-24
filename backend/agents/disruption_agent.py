@@ -4,7 +4,7 @@ generates coordinated alert payloads for all stakeholders.
 
 This is the 'air traffic control' feature — the competitive differentiator.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -39,7 +39,7 @@ def handle_disruption(state: dict) -> dict:
             "alerts_generated": len(alerts),
             "severity": disruption.get("severity", "moderate"),
         },
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
     return {
@@ -108,7 +108,7 @@ def _generate_stakeholder_alerts(disruption: dict, affected_bookings: list) -> l
                     "flight_number": flight_number,
                     "suggested_actions": suggested_actions,
                 },
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
             })
 
             # WhatsApp version (shorter)
@@ -126,7 +126,7 @@ def _generate_stakeholder_alerts(disruption: dict, affected_bookings: list) -> l
                     f"Issue: {description}\n"
                     f"Action required: {suggested_actions[0] if suggested_actions else 'Contact support'}"
                 ),
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
             })
 
         # Alert for guide (if assigned)
@@ -142,7 +142,7 @@ def _generate_stakeholder_alerts(disruption: dict, affected_bookings: list) -> l
                     f"Your assignment for {traveler_name} may be affected. "
                     f"{description}. Check DrukPass for updates."
                 ),
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
             })
 
     # Government alert (aggregate, not per-booking)
@@ -160,7 +160,7 @@ def _generate_stakeholder_alerts(disruption: dict, affected_bookings: list) -> l
                 "affected_date": affected_date,
                 "severity": severity,
             },
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
         })
 
     return alerts
@@ -227,6 +227,6 @@ def _generate_disruption_summary(
                 "dashboard": sum(1 for a in alerts if a.get("channel") == "dashboard"),
             },
         },
-        "processed_at": datetime.utcnow().isoformat(),
+        "processed_at": datetime.now(timezone.utc).isoformat(),
         "agent": "disruption_agent_v1",
     }
