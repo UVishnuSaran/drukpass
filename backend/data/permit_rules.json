@@ -1,0 +1,191 @@
+{
+  "version": "2024.1",
+  "last_updated": "2024-01-01",
+  "notes": "Based on Bhutan Tourism Council regulations. SDF restructured Sep 2023.",
+
+  "nationality_regimes": {
+    "regional": {
+      "nationalities": ["IN", "BD", "MV"],
+      "description": "Indian, Bangladeshi, Maldivian nationals — regional tourist scheme",
+      "sdf_daily_usd": 15,
+      "visa_required": false,
+      "permit_type": "regional_tourist",
+      "entry_points": ["Phuentsholing", "Gelephu", "Samdrup Jongkhar", "Paro Airport"]
+    },
+    "international": {
+      "description": "All other nationalities — international tourist scheme",
+      "visa_required": true,
+      "permit_type": "tourist_visa",
+      "entry_points": ["Paro Airport"],
+      "sdf_tiers": {
+        "peak_season": {
+          "months": [3, 4, 5, 9, 10, 11],
+          "daily_usd": 250
+        },
+        "low_season": {
+          "months": [1, 2, 6, 7, 8, 12],
+          "daily_usd": 200
+        }
+      }
+    }
+  },
+
+  "permit_types": {
+    "tourist_visa": {
+      "label": "International Tourist Visa",
+      "processing_days": 0,
+      "documents_required": ["passport_copy", "photo", "travel_itinerary", "hotel_confirmation"],
+      "valid_entry_points": ["Paro Airport"],
+      "max_duration_days": 90
+    },
+    "regional_tourist": {
+      "label": "Regional Tourist Permit",
+      "processing_days": 0,
+      "documents_required": ["national_id_or_passport"],
+      "valid_entry_points": ["Phuentsholing", "Gelephu", "Samdrup Jongkhar", "Paro Airport"],
+      "max_duration_days": 30
+    },
+    "restricted_area_permit": {
+      "label": "Restricted Area Permit",
+      "processing_days": 1,
+      "documents_required": ["tourist_visa", "approved_itinerary", "licensed_guide_confirmation"],
+      "fee_usd": 50,
+      "max_duration_days": 14
+    },
+    "trekking_permit": {
+      "label": "Trekking Permit",
+      "processing_days": 0,
+      "documents_required": ["tourist_visa", "trekking_route_details", "guide_certification"],
+      "fee_usd": 0,
+      "note": "Included in SDF for international tourists"
+    }
+  },
+
+  "districts": {
+    "Paro": {
+      "restricted": false,
+      "trekking_available": true,
+      "sdf_multiplier": 1.0
+    },
+    "Thimphu": {
+      "restricted": false,
+      "trekking_available": false,
+      "sdf_multiplier": 1.0
+    },
+    "Punakha": {
+      "restricted": false,
+      "trekking_available": true,
+      "sdf_multiplier": 1.0
+    },
+    "Bumthang": {
+      "restricted": false,
+      "trekking_available": true,
+      "sdf_multiplier": 1.0
+    },
+    "Haa": {
+      "restricted": true,
+      "restricted_permit_required": "restricted_area_permit",
+      "trekking_available": true,
+      "sdf_multiplier": 1.0
+    },
+    "Lhuntse": {
+      "restricted": true,
+      "restricted_permit_required": "restricted_area_permit",
+      "trekking_available": false,
+      "sdf_multiplier": 1.0
+    },
+    "Gasa": {
+      "restricted": true,
+      "restricted_permit_required": "restricted_area_permit",
+      "trekking_available": true,
+      "sdf_multiplier": 1.0,
+      "note": "Gateway to Jomolhari and Snowman treks"
+    },
+    "Wangdue Phodrang": {
+      "restricted": false,
+      "trekking_available": true,
+      "sdf_multiplier": 1.0
+    },
+    "Trongsa": {
+      "restricted": false,
+      "trekking_available": false,
+      "sdf_multiplier": 1.0
+    },
+    "Mongar": {
+      "restricted": false,
+      "trekking_available": false,
+      "sdf_multiplier": 1.0
+    },
+    "Trashigang": {
+      "restricted": false,
+      "trekking_available": false,
+      "sdf_multiplier": 1.0
+    },
+    "Zhemgang": {
+      "restricted": false,
+      "trekking_available": false,
+      "sdf_multiplier": 1.0
+    }
+  },
+
+  "travel_purposes": {
+    "leisure": {
+      "label": "Leisure / Sightseeing",
+      "permits_triggered": []
+    },
+    "trekking": {
+      "label": "Trekking / Hiking",
+      "permits_triggered": ["trekking_permit"]
+    },
+    "cultural": {
+      "label": "Cultural / Religious",
+      "permits_triggered": []
+    },
+    "business": {
+      "label": "Business",
+      "permits_triggered": [],
+      "note": "SDF still applies for business visitors staying > 24 hours"
+    },
+    "volunteer": {
+      "label": "Volunteering / NGO",
+      "permits_triggered": [],
+      "sdf_waiver_eligible": true,
+      "waiver_approval_required": true
+    }
+  },
+
+  "sdf_waivers": {
+    "children_under_5": {
+      "condition": "age < 5",
+      "discount_percent": 100
+    },
+    "children_5_to_12": {
+      "condition": "age >= 5 AND age <= 12",
+      "discount_percent": 50
+    },
+    "children_under_18_national": {
+      "condition": "age < 18 AND nationality IN regional",
+      "discount_percent": 100
+    },
+    "bhutanese_diaspora": {
+      "condition": "bhutanese_origin == true",
+      "discount_percent": 100,
+      "documentation_required": ["citizenship_certificate_parents"]
+    }
+  },
+
+  "guide_requirements": {
+    "international_tourists": {
+      "licensed_guide_required": true,
+      "guide_certification": "Tourism Council of Bhutan Licensed Guide"
+    },
+    "regional_tourists": {
+      "licensed_guide_required": false
+    },
+    "restricted_area": {
+      "licensed_guide_required": true,
+      "guide_certification": "Tourism Council of Bhutan Licensed Guide",
+      "guide_must_have_district_permit": true
+    }
+  }
+}
